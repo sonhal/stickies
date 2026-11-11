@@ -35,7 +35,7 @@ async function shoot(browser, theme) {
 	await go('/v/active');
 	await snap('board');
 
-	await go('/v/standup');
+	await go('/p/standup');
 	await p.keyboard.press('ArrowRight');
 	await p.waitForSelector('.note.selected');
 	await snap('matrix');

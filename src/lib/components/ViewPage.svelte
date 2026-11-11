@@ -5,7 +5,6 @@
 	import { getUi } from '$lib/client/ui.svelte';
 	import { decodeView, encodeView } from '$lib/client/share';
 	import type { ViewDefinition, ViewScope } from '$lib/query/types';
-	import type { WorkItem } from '$lib/fields/types';
 	import Workspace from './Workspace.svelte';
 	import Popover from './ui/Popover.svelte';
 
@@ -148,12 +147,6 @@
 	{/if}
 {/snippet}
 
-{#snippet matrixDetails(item: WorkItem)}
-	<div class="quick">
-		<button type="button" class="btn small" onclick={() => ui.open(item.id)}>All fields</button>
-	</div>
-{/snippet}
-
 {#if view}
 	<Workspace
 		{view}
@@ -162,7 +155,6 @@
 		subheading={subheading ?? (shared ? 'shared view' : undefined)}
 		dirty={!!draft && !!base}
 		{actions}
-		{matrixDetails}
 	/>
 {:else if !views.loaded}
 	<p class="muted pad">Loading view…</p>
@@ -188,11 +180,5 @@
 	}
 	.danger {
 		color: var(--danger);
-	}
-	.quick {
-		display: flex;
-		gap: 8px;
-		align-items: center;
-		margin: -4px 0 12px;
 	}
 </style>

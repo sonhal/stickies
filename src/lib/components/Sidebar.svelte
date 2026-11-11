@@ -3,6 +3,8 @@
 	import { getBoard } from '$lib/client/board.svelte';
 	import { getUi } from '$lib/client/ui.svelte';
 	import { getViews } from '$lib/client/views-context';
+	import { getTools } from '$lib/client/tools-context';
+	import { toolType } from '$lib/prioritization/tools';
 	import { closedKind } from '$lib/fields/registry';
 	import { slotVar } from '$lib/colors';
 	import { epicSlug, isEpic } from '$lib/query/epics';
@@ -18,6 +20,7 @@
 	const board = getBoard();
 	const ui = getUi();
 	const views = getViews();
+	const tools = getTools();
 
 	const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 	const shownViews = $derived(kioskViews ? views.config : views.all);
@@ -35,7 +38,9 @@
 	);
 	const path = $derived(page.url.pathname);
 	const active = (href: string) => path === href || (href !== '/' && path.startsWith(href + '/'));
-	const firstView = $derived(shownViews[0]?.id);
+	// "/" shows the home page: a tool on a kiosk that lists one first, otherwise the first view
+	const homeTool = tools.home?.kind === 'tool' ? tools.home.id : null;
+	const firstView = $derived(homeTool ? null : shownViews[0]?.id);
 </script>
 
 <nav class="side" aria-label="Board navigation">
@@ -71,7 +76,7 @@
 						onclick={onnavigate}
 						data-href={href}
 					>
-						<span class="ic" aria-hidden="true">{v.layout === 'matrix' ? '▦' : v.layout === 'board' ? '▥' : '☰'}</span>
+						<span class="ic" aria-hidden="true">{v.layout === 'board' ? '▥' : '☰'}</span>
 						<span class="lbl">{v.name}</span>
 						{#if views.isPersonal(v.id)}<span class="mine" title="Saved in this browser">•</span>{/if}
 					</a>
@@ -82,6 +87,32 @@
 			<p class="note">Views can't be saved in this browser (storage is blocked or full).</p>
 		{/if}
 	</div>
+
+	{#if tools.list.length}
+		<div class="section">
+			<h2>Prioritization</h2>
+			<ul>
+				{#each tools.list as t (t.id)}
+					{@const type = toolType(t)}
+					<li>
+						<a
+							href="/p/{t.id}"
+							class="two-line"
+							class:active={active(`/p/${t.id}`) || (path === '/' && t.id === homeTool)}
+							onclick={onnavigate}
+							title="{type.name}: {type.description}"
+						>
+							<span class="ic" aria-hidden="true">{type.icon}</span>
+							<span class="tool">
+								<span class="lbl">{t.name}</span>
+								<span class="kind">{type.name}</span>
+							</span>
+						</a>
+					</li>
+				{/each}
+			</ul>
+		</div>
+	{/if}
 
 	{#if teams.length}
 		<div class="section">
@@ -129,6 +160,27 @@
 </nav>
 
 <style>
+	li a.two-line {
+		height: auto;
+		min-height: 28px;
+		padding-top: 4px;
+		padding-bottom: 4px;
+	}
+	/* Prioritization entries: name, and the tool type on a second line (the sidebar is too narrow for both) */
+	.tool {
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-width: 0;
+		line-height: 1.25;
+	}
+	.kind {
+		font-size: 11px;
+		color: var(--text-muted);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
 	.side {
 		display: flex;
 		flex-direction: column;

@@ -44,7 +44,13 @@ export interface FilterGroup {
 
 export const isGroup = (r: FilterRule | FilterGroup): r is FilterGroup => 'op' in r;
 
-export type Layout = 'list' | 'board' | 'matrix';
+/** Layouts a user view can have. */
+export type ViewLayout = 'list' | 'board';
+/**
+ * All layouts. `matrix` is internal: only prioritization tools (src/lib/prioritization) draw with it.
+ * User views (config, localStorage, share links) are validated to ViewLayout.
+ */
+export type Layout = ViewLayout | 'matrix';
 
 /** Completed / canceled items to show, like Linear. "all" = everything within CLOSED_DAYS_MAX. */
 export type CompletedWindow = 'all' | 'day' | 'week' | 'month' | 'none';
@@ -100,6 +106,10 @@ export interface MatrixConfig {
 	x: AxisConfig;
 	y: AxisConfig;
 	quadrants?: Partial<Record<QuadrantKey, { name: string; hint: string }>>;
+	/** Accessible name of the grid, set by the tool type (e.g. "Eisenhower matrix") */
+	label?: string;
+	/** Walk-through order of the quadrants, set by the tool type. Default: Eisenhower (Do first). */
+	walkOrder?: QuadrantKey[];
 }
 
 export interface ViewScope {
@@ -121,9 +131,12 @@ export interface ViewDefinition {
 	subGroupBy?: FieldRef | null;
 	orderBy: OrderBy[];
 	display: Display;
+	/** Internal: set by a prioritization tool, never by a stored view */
 	matrix?: MatrixConfig;
 	/** Overrides the per-field rank direction for this view */
 	rankDirection?: RankDirection;
+	/** Set when an older stored view was changed on load; the page shows a fixed explanation */
+	migrated?: 'matrixLayout';
 }
 
 /** Per-field settings from views.config.ts, e.g. the rank direction of a select field. */

@@ -130,7 +130,7 @@ export class ViewStore {
 
 	/** Save a new personal view (from a draft, a duplicate, a share link or an import). */
 	add(view: ViewDefinition, name?: string): ViewDefinition {
-		const v = { ...structuredClone($state.snapshot(view) as ViewDefinition), id: newViewId(), name: (name ?? view.name).slice(0, 100) };
+		const v = { ...plain(view), id: newViewId(), name: (name ?? view.name).slice(0, 100) };
 		this.personal = [...this.personal, v];
 		this.persist();
 		return v;
@@ -139,7 +139,7 @@ export class ViewStore {
 	/** Overwrite a personal view. Config views can't be changed here (they live in the repo). */
 	update(view: ViewDefinition): boolean {
 		if (!this.isPersonal(view.id)) return false;
-		this.personal = this.personal.map((v) => (v.id === view.id ? structuredClone($state.snapshot(view) as ViewDefinition) : v));
+		this.personal = this.personal.map((v) => (v.id === view.id ? plain(view) : v));
 		this.persist();
 		return true;
 	}
@@ -184,4 +184,10 @@ export class ViewStore {
 		for (const v of views) this.add(v);
 		return { added: views.length, skipped };
 	}
+}
+
+/** A storable copy: no Svelte proxies, and no one-off migration marker (saving acknowledges it). */
+function plain(view: ViewDefinition): ViewDefinition {
+	const { migrated: _migrated, ...rest } = structuredClone($state.snapshot(view) as ViewDefinition);
+	return rest;
 }

@@ -23,6 +23,20 @@ describe('parseView', () => {
 		expect(new Set(defaultViews.map((v) => v.id)).size).toBe(defaultViews.length);
 	});
 
+	it('opens an old matrix view as a list and marks it, dropping the matrix config', () => {
+		const old = { ...valid, layout: 'matrix', matrix: { x: { field: { field: 'native:weight' } }, y: { field: { name: 'Priority' } } } };
+		const r = parseView(old);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.view.layout).toBe('list');
+		expect(r.view.migrated).toBe('matrixLayout');
+		expect('matrix' in r.view).toBe(false);
+	});
+
+	it('does not accept a made-up migration marker', () => {
+		expect(parseView({ ...valid, migrated: 'anything else' }).ok).toBe(false);
+	});
+
 	it('accepts a valid view and migrates a missing version', () => {
 		expect(parseView(valid).ok).toBe(true);
 		const { version: _v, ...noVersion } = valid;

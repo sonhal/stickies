@@ -1,7 +1,8 @@
 # Board: Linear-style views on GitLab
 
 A Linear-like board for a GitLab group's work items, built with SvelteKit 2 and Svelte 5.
-The standup **Eisenhower matrix** is one layout among several: **List**, **Board** (kanban) and **Matrix**.
+Views show issues as a **List** or a **Board** (kanban). A separate **Prioritization** section shows them
+through prioritization frameworks: the standup **Eisenhower matrix** today, more tools later.
 Everyone signs in with their own GitLab account, sees only what GitLab lets them see, and can edit
 issues from the board. A wall screen can run a read-only **kiosk**.
 
@@ -9,7 +10,7 @@ issues from the board. A wall screen can run a read-only **kiosk**.
 
 | | |
 |---|---|
-| ![Board](docs/screenshots/board-light.png) | ![Matrix](docs/screenshots/matrix-dark.png) |
+| ![Board](docs/screenshots/board-light.png) | ![Eisenhower matrix](docs/screenshots/matrix-dark.png) |
 | ![Detail panel](docs/screenshots/panel-dark.png) | ![Command palette](docs/screenshots/palette-light.png) |
 
 More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
@@ -20,8 +21,13 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   visible properties, sub-issues nested / flat / hidden, completed issues (All / Past day / Past week /
   Past month / None), empty groups. Default views live in [`src/lib/views.config.ts`](src/lib/views.config.ts);
   everyone can save their own views in their browser, share a view as a link, and export/import JSON.
-- **Layouts:** List, Board (columns from any single-select field, status, people or parent; optional
-  swimlanes; drag to update), Matrix (both axes from any ordered field; standup walk-through and epic colors).
+- **Layouts:** List, and Board (columns from any single-select field, status, people, parent or epic;
+  optional swimlanes; drag to update).
+- **Prioritization:** named tools in their own sidebar section, each an instance of a *tool type*:
+  **Eisenhower** (urgent × important → Do / Schedule / Delegate / Drop, with the standup walk-through and
+  epic colors) and **Value vs effort** (Quick wins / Big bets / Fill-ins / Reconsider). Axes come from any
+  ordered field. Instances live in [`src/lib/prioritization.config.ts`](src/lib/prioritization.config.ts);
+  see [Prioritization tools](#prioritization-tools).
 - **Editing:** status, any custom field, assignees, parent epic, title, weight, start/due date, labels
   (scoped labels stay exclusive), milestone, iteration, and *create issue* pre-filled from the current view.
   Changes show at once and roll back with a message if GitLab refuses them.
@@ -34,7 +40,7 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   "field removed" chip and is ignored.
 - **Keyboard:** `⌘/Ctrl K` command palette · `j`/`k` or `↑`/`↓` move · `Enter` open · `Esc` close ·
   `c` create · `s` status · `a` assignees · `l` labels · `w` weight · `g` then `1`–`9` go to a view ·
-  `g e` epics · on a board, `Alt`+`←`/`→` moves the focused card · in the matrix, `←`/`→` (or `j`/`k`) walk the board.
+  `g e` epics · on a board, `Alt`+`←`/`→` moves the focused card · in an Eisenhower matrix, `←`/`→` (or `j`/`k`) walk the board.
 
 ## Run it
 
@@ -74,7 +80,7 @@ node scripts/fake-gitlab.mjs &                     # http://localhost:4010
 | `SESSION_SECRET` | (required) | 32+ characters. Encrypts the session cookie. Changing it signs everyone out. |
 | `SESSION_MAX_AGE_DAYS` | **`1`** | How long a sign-in lasts. Short because every session holds an `api` token. |
 | `GITLAB_TOKEN`, `KIOSK_KEY` | | Kiosk screen: a **`read_api`-only** service token, and the 24+ character link key. |
-| `KIOSK_VIEWS` | `standup` | Comma-separated config view ids the kiosk shows (e.g. `standup,epics`). |
+| `KIOSK_VIEWS` | `standup` | Comma-separated config view ids and prioritization tool ids the kiosk shows, first one first (e.g. `standup,epics`). |
 | `KIOSK_ROTATE_SECONDS` | `0` | Kiosk: switch to the next of `KIOSK_VIEWS` every N seconds. 0 = stay. |
 | `CLOSED_DAYS_MAX` | `30` | Closed items older than this aren't fetched. Caps the "Completed issues" option. |
 | `CACHE_SECONDS` | `30` | Per-viewer item cache. |
@@ -135,8 +141,9 @@ stores a 30-day kiosk cookie and redirects to the board.
 - The kiosk is **always read-only**: write endpoints refuse kiosk sessions, and the board checks (via
   `GET /personal_access_tokens/self`) that `GITLAB_TOKEN` has exactly `read_api`; it refuses to load with
   a broader token.
-- It shows **config views only** (`KIOSK_VIEWS`, default `standup`), can switch between them from the
-  sidebar, and can rotate through them (`KIOSK_ROTATE_SECONDS`). No personal views, nothing in storage.
+- It shows only what `KIOSK_VIEWS` lists (default `standup`): config view ids and prioritization tool ids,
+  in that order. The first one is the kiosk's home page; it can switch between them from the sidebar and
+  rotate through them (`KIOSK_ROTATE_SECONDS`). No personal views, nothing in storage.
 - Unset `KIOSK_KEY` to turn kiosk mode off; existing kiosk cookies stop working immediately.
 
 ## Views
@@ -149,7 +156,8 @@ key or by name:
 ```ts
 { field: 'native:status' }          // built-in fields: native:status, native:assignees, native:labels, native:weight,
                                     // native:dueDate, native:startDate, native:milestone, native:iteration,
-                                    // native:project, native:parent, native:type, native:createdAt, native:updatedAt
+                                    // native:project, native:parent, native:epic, native:type, native:createdAt,
+                                    // native:updatedAt. native:epic is the nearest epic above an item (read-only)
 { name: 'Priority' }                // a custom field, matched by name (case-insensitive)
 { field: 'custom:7', name: 'Priority' }  // by GitLab custom field id, name as a fallback (what saved views store)
 ```
@@ -162,21 +170,10 @@ Filters are a declarative tree (no `eval`, no regex): `and(rule('Priority', 'any
 Option values can be option ids or labels. Special values: `me`, `today`, `today+7`, `today-30`, and for
 status `category:triage | toDo | inProgress | done | canceled`.
 
-**Matrix axes** use the option's position in GitLab's order, not its value:
-
-```ts
-matrix: {
-  x: { field: { field: 'native:weight' }, split: { threshold: 3 } },   // numbers: threshold
-  y: { field: { name: 'Priority' }, split: { atOption: 'High' } },     // this option and above = "high"
-}
-// split: 'half' (default)  top half of the options is "high"; odd count: middle goes high (oddMiddle: 'low' to flip)
-// split: { atOption }      falls back to 'half' with a warning if that option disappears
-// split: { withinDays: N } dates: due within N days (or overdue) is "high"
-```
-
 **Option order.** The board assumes options are listed **high → low** in GitLab (Critical, High, Medium,
 Low). If a field is the other way round, set it once in `settings.fieldSettings`
-(`{ field: { name: 'Effort' }, rankDirection: 'firstLowest' }`), or per view (`rankDirection`) or per axis.
+(`{ field: { name: 'Effort' }, rankDirection: 'firstLowest' }`), or per view, per prioritization tool
+(`rankDirection`) or per axis.
 
 Board-wide settings in the same file: app title, default rank direction, `epicColors` (pin an epic to one of
 the 8 color slots by its numeric work item id, shown in the legend tooltip), `refreshSeconds`.
@@ -193,6 +190,50 @@ the 8 color slots by its numeric work item id, shown in the legend tooltip), `re
   repo config).
 - Any change to a view is kept in the URL (`?v=`), so reload, back/forward and sharing all keep it.
 - Views don't follow you between browsers or devices; use export/import or share links.
+
+
+## Prioritization tools
+
+The **Prioritization** section in the sidebar shows the issues through a prioritization framework. Each entry
+is an *instance* of a *tool type*, opened at `/p/<id>`.
+
+| Tool type | Axes | Quadrants |
+|---|---|---|
+| `eisenhower` | `urgency` (x) × `importance` (y) | Do · Schedule · Delegate · Drop, plus the standup walk-through (`←`/`→`) |
+| `valueEffort` | `effort` (x, small on the left) × `value` (y) | Quick wins · Big bets · Fill-ins · Reconsider |
+
+Instances are defined in [`src/lib/prioritization.config.ts`](src/lib/prioritization.config.ts) (config only;
+there are no personal ones). The defaults are **Standup** (Eisenhower: urgency from weight ≥ 3, importance from
+Priority at "High" and above) and **Priority × effort** (value vs effort).
+
+```ts
+{
+  id: 'standup', name: 'Standup', type: 'eisenhower',
+  filter: and(rule('native:type', 'noneOf', ['Epic'])),
+  urgency:    { field: { field: 'native:weight' }, split: { threshold: 3 } },
+  importance: { field: { name: 'Priority' }, split: { atOption: 'High' } },
+  // optional: title / lowLabel / highLabel / invert / rankDirection per axis, quadrants: { highHigh: { name, hint } … }
+}
+```
+
+Axes take any ordered field and use the option's **position** in GitLab's order, never its value:
+
+- `split: 'half'` (default): the top half of the options is "high"; with an odd count the middle one goes high
+  (`oddMiddle: 'low'` to flip).
+- `split: { atOption: 'High' }`: this option and above. Falls back to `'half'` with a warning if it's renamed.
+- `split: { threshold: 3 }`: numbers ≥ 3.
+- `split: { withinDays: 14 }`: dates within 14 days, or overdue.
+
+The filter bar works on a tool page as on a view, but the change isn't saved or put in the URL ("Reset filter"
+returns to the config). There's no Display menu: the tool's config decides the layout.
+
+**Adding a tool type** (e.g. MoSCoW, RICE, WSJF): add its instance shape to
+[`src/lib/prioritization/types.ts`](src/lib/prioritization/types.ts) and a definition to `TOOL_TYPES` in
+[`tools.ts`](src/lib/prioritization/tools.ts). A 2×2 type only needs `toMatrix()`; a type drawn differently
+gets its own `renderer` value and component in `ToolPage.svelte`. Nothing in views changes.
+
+**Older matrix views.** Views used to have a Matrix layout. A personal view or share link that still has it
+opens as a list with a notice pointing to Prioritization; saving the view clears the notice.
 
 ## Completed and canceled items
 

@@ -6,6 +6,9 @@
 	import { UiState, setUi, isTyping } from '$lib/client/ui.svelte';
 	import { ViewStore } from '$lib/client/viewStore.svelte';
 	import { setViews } from '$lib/client/views-context';
+	import { setTools } from '$lib/client/tools-context';
+	import { prioritizationTools } from '$lib/prioritization.config';
+	import { toolType } from '$lib/prioritization/tools';
 	import { defaultViews, settings } from '$lib/views.config';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import ItemPanel from '$lib/components/ItemPanel.svelte';
@@ -33,11 +36,30 @@
 	board.notify = (text, kind) => ui.toast(text, kind);
 
 	// svelte-ignore state_referenced_locally
-	const kioskViews = data.kiosk ? defaultViews.filter((v) => data.kiosk!.views.includes(v.id)) : null;
+	const kioskIds = data.kiosk?.views ?? null;
+	const kioskViews = kioskIds ? defaultViews.filter((v) => kioskIds.includes(v.id)) : null;
 	// The kiosk uses config views only: no personal views, nothing in storage.
 	// svelte-ignore state_referenced_locally
 	const views = new ViewStore(kioskViews ?? defaultViews, data.viewer?.kind === 'user' ? data.viewer.id : null);
 	setViews(views);
+
+	// Prioritization tools. KIOSK_VIEWS can list tool ids and view ids, in the order to show them.
+	const tools = kioskIds ? prioritizationTools.filter((t) => kioskIds.includes(t.id)) : prioritizationTools;
+	/** Kiosk pages in KIOSK_VIEWS order: what "/" shows first and what rotation cycles through */
+	const kioskPages = kioskIds
+		? kioskIds.flatMap((id) =>
+				tools.some((t) => t.id === id) ? [`/p/${id}`] : kioskViews!.some((v) => v.id === id) ? [`/v/${id}`] : []
+			)
+		: null;
+	const firstKiosk = kioskPages?.[0];
+	setTools({
+		list: tools,
+		home: firstKiosk?.startsWith('/p/')
+			? { kind: 'tool', id: firstKiosk.slice(3) }
+			: firstKiosk
+				? { kind: 'view', id: firstKiosk.slice(3) }
+				: null
+	});
 
 	const selected = $derived(ui.selectedId ? (board.byId.get(ui.selectedId) ?? null) : null);
 	let navOpen = $state(false);
@@ -68,11 +90,10 @@
 	// ---- Kiosk rotation ------------------------------------------------------------------------
 	$effect(() => {
 		const secs = data.kiosk?.rotateSeconds ?? 0;
-		if (!kioskViews || kioskViews.length < 2 || secs <= 0) return;
+		if (!kioskPages || kioskPages.length < 2 || secs <= 0) return;
 		const t = setInterval(() => {
-			const current = page.params.viewId ?? kioskViews[0].id;
-			const i = kioskViews.findIndex((v) => v.id === current);
-			goto(`/v/${kioskViews[(i + 1) % kioskViews.length].id}`);
+			const i = kioskPages.indexOf(page.url.pathname);
+			goto(kioskPages[(i + 1) % kioskPages.length]); // "/" (i = -1) counts as the first page
 		}, secs * 1000);
 		return () => clearInterval(t);
 	});
@@ -222,6 +243,8 @@
 		(kioskViews ?? views.all).forEach((v, i) =>
 			out.push({ id: `view:${v.id}`, group: 'Views', label: v.name, hint: i < 9 ? `G ${i + 1}` : v.layout, keywords: v.description, run: () => goto(`/v/${v.id}`) })
 		);
+		for (const t of tools)
+			out.push({ id: `tool:${t.id}`, group: 'Prioritization', label: t.name, hint: toolType(t).name, keywords: t.description, run: () => goto(`/p/${t.id}`) });
 		for (const p of board.reg.projects)
 			out.push({ id: `team:${p.id}`, group: 'Teams', label: p.name, hint: p.fullPath, run: () => goto(`/team/${p.fullPath}`) });
 		for (const e of board.items.filter((i) => i.type.toLowerCase() === 'epic'))

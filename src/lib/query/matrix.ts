@@ -226,6 +226,12 @@ export function screenLayout(x: ResolvedAxis, y: ResolvedAxis) {
 	};
 }
 
+/** Quadrant walk-through order: the tool type's, or Eisenhower's. Always all four, each once. */
+export function walkOrderOf(m: MatrixConfig): QuadrantKey[] {
+	const custom = (m.walkOrder ?? []).filter((k, i, a) => QUADRANT_ORDER.includes(k) && a.indexOf(k) === i);
+	return [...custom, ...QUADRANT_ORDER.filter((k) => !custom.includes(k))];
+}
+
 export function quadrantsOf(m: MatrixConfig): Record<QuadrantKey, { name: string; hint: string }> {
 	return { ...DEFAULT_QUADRANTS, ...(m.quadrants ?? {}) };
 }

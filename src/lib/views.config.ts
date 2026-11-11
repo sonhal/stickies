@@ -6,10 +6,11 @@
  * Views reference fields by key (`{ field: 'native:status' }`) or by name (`{ name: 'Priority' }`).
  * Names are matched case-insensitively against the custom fields GitLab reports at runtime, so
  * this file works on any GitLab. If a named field or option doesn't exist, the view still loads:
- * the rule shows as "field removed" and is ignored, and the matrix shows a notice.
+ * the rule shows as "field removed" and is ignored.
  *
- * Option values are never needed: filters can use option labels as a fallback ("High"), and a
- * matrix axis splits by the option's position in GitLab's order (`split: 'half'`).
+ * Option values are never needed: filters can use option labels as a fallback ("High").
+ * Views are lists or kanban boards. 2×2 matrices (Eisenhower, value vs effort) are prioritization
+ * tools, configured in src/lib/prioritization.config.ts.
  *
  * Native field keys: native:status, native:assignees, native:labels, native:weight, native:dueDate,
  * native:startDate, native:milestone, native:iteration, native:project, native:parent, native:epic, native:type,
@@ -26,7 +27,7 @@ export const settings = {
 
 	/**
 	 * How to read GitLab's option order. 'firstHighest': the first option is the highest
-	 * (Critical, High, Medium, Low). Override per field below, or per view / matrix axis.
+	 * (Critical, High, Medium, Low). Override per field below, or per view / prioritization axis.
 	 */
 	defaultRankDirection: 'firstHighest' as RankDirection,
 	fieldSettings: [
@@ -55,31 +56,6 @@ const listDisplay = {
 const byPriority = [{ field: PRIORITY, dir: 'desc' as const }];
 
 export const defaultViews: ViewDefinition[] = defineViews([
-	{
-		id: 'standup',
-		name: 'Standup',
-		description: 'Eisenhower matrix: urgency from weight, importance from Priority.',
-		layout: 'matrix',
-		filter: and(notEpics),
-		orderBy: [],
-		display: { properties: [], subIssues: 'flat', showEmptyGroups: true, completed: 'none' },
-		matrix: {
-			x: {
-				field: { field: 'native:weight' },
-				split: { threshold: 3 }, // weight 3 and above counts as urgent
-				title: 'Urgency',
-				lowLabel: 'Not urgent',
-				highLabel: 'Urgent'
-			},
-			y: {
-				field: { name: 'Priority' },
-				split: { atOption: 'High' }, // High and above is important; falls back to half if renamed
-				title: 'Importance',
-				lowLabel: 'Not important',
-				highLabel: 'Important'
-			}
-		}
-	},
 	{
 		id: 'my-issues',
 		name: 'My issues',
@@ -139,25 +115,6 @@ export const defaultViews: ViewDefinition[] = defineViews([
 		groupBy: { field: 'native:project' },
 		orderBy: [{ field: { field: 'native:createdAt' }, dir: 'desc' }],
 		display: { ...listDisplay, completed: 'none' }
-	},
-	{
-		id: 'priority-effort',
-		name: 'Priority × effort',
-		description: 'Quick wins top-left: high priority, low effort.',
-		layout: 'matrix',
-		filter: and(notEpics),
-		orderBy: [],
-		display: { properties: [], subIssues: 'flat', showEmptyGroups: true, completed: 'none' },
-		matrix: {
-			x: { field: { name: 'Effort' }, split: 'half', title: 'Effort', lowLabel: 'Small', highLabel: 'Large', invert: true },
-			y: { field: PRIORITY, split: 'half', title: 'Priority', lowLabel: 'Lower', highLabel: 'Higher' },
-			quadrants: {
-				lowHigh: { name: 'Quick wins', hint: 'High priority, small' },
-				highHigh: { name: 'Big bets', hint: 'High priority, large' },
-				lowLow: { name: 'Fill-ins', hint: 'Low priority, small' },
-				highLow: { name: 'Reconsider', hint: 'Low priority, large' }
-			}
-		}
 	},
 	{
 		// Used by team (project) pages unless ?view= picks another one. Not tied to a team itself.

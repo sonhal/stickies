@@ -36,27 +36,7 @@ const FilterGroupSchema: v.GenericSchema<FilterGroup> = v.object({
 	)
 });
 
-const SplitSchema = v.union([
-	v.literal('half'),
-	v.object({ atOption: Str(200) }),
-	v.object({ threshold: v.pipe(v.number(), v.finite()) }),
-	v.object({ withinDays: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(3650)) })
-]);
-
 const RankSchema = v.picklist(['firstHighest', 'firstLowest']);
-
-const AxisSchema = v.object({
-	field: FieldRefSchema,
-	split: v.optional(SplitSchema),
-	rankDirection: v.optional(RankSchema),
-	oddMiddle: v.optional(v.picklist(['high', 'low'])),
-	title: v.optional(Str(60)),
-	lowLabel: v.optional(Str(60)),
-	highLabel: v.optional(Str(60)),
-	invert: v.optional(v.boolean())
-});
-
-const QuadrantSchema = v.object({ name: Str(40), hint: Str(80) });
 
 const ViewSchema = v.object({
 	version: v.literal(1),
@@ -70,7 +50,7 @@ const ViewSchema = v.object({
 		})
 	),
 	filter: FilterGroupSchema,
-	layout: v.picklist(['list', 'board', 'matrix']),
+	layout: v.picklist(['list', 'board']),
 	groupBy: v.optional(v.nullable(FieldRefSchema)),
 	subGroupBy: v.optional(v.nullable(FieldRefSchema)),
 	orderBy: v.pipe(
@@ -83,21 +63,8 @@ const ViewSchema = v.object({
 		showEmptyGroups: v.boolean(),
 		completed: v.picklist(['all', 'day', 'week', 'month', 'none'])
 	}),
-	matrix: v.optional(
-		v.object({
-			x: AxisSchema,
-			y: AxisSchema,
-			quadrants: v.optional(
-				v.object({
-					highHigh: v.optional(QuadrantSchema),
-					lowHigh: v.optional(QuadrantSchema),
-					highLow: v.optional(QuadrantSchema),
-					lowLow: v.optional(QuadrantSchema)
-				})
-			)
-		})
-	),
-	rankDirection: v.optional(RankSchema)
+	rankDirection: v.optional(RankSchema),
+	migrated: v.optional(v.picklist(['matrixLayout']))
 });
 
 function depth(g: FilterGroup, d = 1): number {
@@ -115,8 +82,15 @@ function countRules(g: FilterGroup): number {
  * a view without a version is treated as version 1.
  */
 export function migrateView(raw: unknown): unknown {
-	if (raw && typeof raw === 'object' && !Array.isArray(raw) && !('version' in raw)) return { ...raw, version: 1 };
-	return raw;
+	if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+	let out = raw as Record<string, unknown>;
+	if (!('version' in out)) out = { ...out, version: 1 };
+	// The matrix layout moved to Prioritization tools: an old matrix view opens as a list.
+	if (out.layout === 'matrix') {
+		const { matrix: _matrix, ...rest } = out;
+		out = { ...rest, layout: 'list', migrated: 'matrixLayout' };
+	}
+	return out;
 }
 
 export type ParseResult = { ok: true; view: ViewDefinition } | { ok: false; error: string };

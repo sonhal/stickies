@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getBoard } from '$lib/client/board.svelte';
 	import { resolveField } from '$lib/fields/registry';
-	import { canBeAxis, canBeColumns, canGroupBy, canSortBy, menuFields, refOf } from '$lib/query/edit';
-	import type { AxisConfig, CompletedWindow, FieldRef, Layout, SubIssues, ViewDefinition } from '$lib/query/types';
+	import { canBeColumns, canGroupBy, canSortBy, menuFields, refOf } from '$lib/query/edit';
+	import type { CompletedWindow, FieldRef, SubIssues, ViewDefinition, ViewLayout } from '$lib/query/types';
 	import Popover from './ui/Popover.svelte';
 
 	let { view, onchange }: { view: ViewDefinition; onchange: (v: ViewDefinition) => void } = $props();
@@ -16,7 +16,6 @@
 
 	const groupFields = $derived(menuFields(board.reg, view.layout === 'board' ? canBeColumns : canGroupBy));
 	const sortFields = $derived(menuFields(board.reg, canSortBy));
-	const axisFields = $derived(menuFields(board.reg, canBeAxis));
 	const propFields = $derived(menuFields(board.reg, (f) => f.key !== 'native:type'));
 
 	const order = $derived(view.orderBy[0]);
@@ -28,22 +27,10 @@
 	function setDisplay<K extends keyof ViewDefinition['display']>(k: K, value: ViewDefinition['display'][K]) {
 		onchange({ ...view, display: { ...view.display, [k]: value } });
 	}
-	function setLayout(layout: Layout) {
+	function setLayout(layout: ViewLayout) {
 		let next: ViewDefinition = { ...view, layout };
 		if (layout === 'board' && !view.groupBy) next = { ...next, groupBy: { field: 'native:status', name: 'Status' } };
-		if (layout === 'matrix' && !view.matrix) {
-			const y = axisFields.find((f) => f.key.startsWith('custom:')) ?? axisFields[0];
-			const x = axisFields.find((f) => f.key === 'native:weight') ?? axisFields[1] ?? axisFields[0];
-			if (x && y) next = { ...next, matrix: { x: { field: refOf(x) }, y: { field: refOf(y) } } };
-		}
 		onchange(next);
-	}
-	function setAxis(which: 'x' | 'y', key: string) {
-		if (!view.matrix) return;
-		const ref = refFor(key);
-		if (!ref) return;
-		const axis: AxisConfig = { field: ref };
-		onchange({ ...view, matrix: { ...view.matrix, [which]: axis } });
 	}
 	function toggleProp(key: string) {
 		const has = view.display.properties.some((p) => keyOf(p) === key);
@@ -52,10 +39,10 @@
 		setDisplay('properties', properties);
 	}
 
-	const LAYOUTS: [Layout, string][] = [
+	// 2×2 matrices are prioritization tools now (src/lib/prioritization), not a view layout.
+	const LAYOUTS: [ViewLayout, string][] = [
 		['list', 'List'],
-		['board', 'Board'],
-		['matrix', 'Matrix']
+		['board', 'Board']
 	];
 	const COMPLETED: [CompletedWindow, string][] = [
 		['all', 'All'],
@@ -86,22 +73,6 @@
 				{/each}
 			</div>
 
-			{#if view.layout === 'matrix' && view.matrix}
-				<label class="line"
-					><span>Horizontal axis</span>
-					<select class="input" value={keyOf(view.matrix.x.field)} onchange={(e) => setAxis('x', e.currentTarget.value)}>
-						{#if keyOf(view.matrix.x.field) === '__missing'}<option value="__missing">(field removed)</option>{/if}
-						{#each axisFields as f (f.key)}<option value={f.key}>{f.name}</option>{/each}
-					</select>
-				</label>
-				<label class="line"
-					><span>Vertical axis</span>
-					<select class="input" value={keyOf(view.matrix.y.field)} onchange={(e) => setAxis('y', e.currentTarget.value)}>
-						{#if keyOf(view.matrix.y.field) === '__missing'}<option value="__missing">(field removed)</option>{/if}
-						{#each axisFields as f (f.key)}<option value={f.key}>{f.name}</option>{/each}
-					</select>
-				</label>
-			{:else}
 				<label class="line"
 					><span>{view.layout === 'board' ? 'Columns' : 'Grouping'}</span>
 					<select class="input" value={keyOf(view.groupBy)} onchange={(e) => set('groupBy', refFor(e.currentTarget.value))}>
@@ -118,7 +89,6 @@
 						{#each menuFields(board.reg, canGroupBy) as f (f.key)}<option value={f.key}>{f.name}</option>{/each}
 					</select>
 				</label>
-			{/if}
 			<div class="line">
 				<label for="order-by">Ordering</label>
 				<div class="pair">

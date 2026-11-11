@@ -5,6 +5,8 @@
 	import type { OptionDef, WorkItem } from '$lib/fields/types';
 
 	interface Props {
+		/** Accessible name of the grid */
+		label?: string;
 		placed: Placed[];
 		x: ResolvedAxis;
 		y: ResolvedAxis;
@@ -17,7 +19,7 @@
 		onselect: (item: WorkItem) => void;
 	}
 
-	let { placed, x, y, quadrants, slotFor, epicTitle, statusOf, isActive, selectedId, onselect }: Props = $props();
+	let { label = 'Quadrant matrix', placed, x, y, quadrants, slotFor, epicTitle, statusOf, isActive, selectedId, onselect }: Props = $props();
 
 	const groups = $derived(groupByQuadrant(placed));
 	const layout = $derived(screenLayout(x, y));
@@ -32,7 +34,7 @@
 	});
 </script>
 
-<div class="board" bind:this={root} role="region" aria-label="Eisenhower matrix">
+<div class="board" bind:this={root} role="region" aria-label={label}>
 	<!-- Row captions on the left, column captions along the bottom -->
 	{#each layout.cells as row, r (r)}
 		<div class="y-cap" style="grid-row: {r + 1}">

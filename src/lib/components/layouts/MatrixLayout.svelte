@@ -6,10 +6,10 @@
 		groupByQuadrant,
 		placeItems,
 		quadrantsOf,
-		QUADRANT_ORDER,
+		walkOrderOf,
 		resolveAxis
 	} from '$lib/query/matrix';
-	import type { ViewDefinition } from '$lib/query/types';
+	import type { MatrixConfig, ViewDefinition } from '$lib/query/types';
 	import type { WorkItem } from '$lib/fields/types';
 	import QuadrantBoard from '$lib/components/QuadrantBoard.svelte';
 	import Legend from '$lib/components/Legend.svelte';
@@ -34,12 +34,13 @@
 	const board = getBoard();
 	const ui = getUi();
 
-	const DEFAULT_MATRIX = { x: { field: { field: 'native:weight' } }, y: { field: { field: 'native:status' } } };
+	const DEFAULT_MATRIX: MatrixConfig = { x: { field: { field: 'native:weight' } }, y: { field: { field: 'native:status' } } };
 	const matrix = $derived(view.matrix ?? DEFAULT_MATRIX);
 	const ctx = $derived(board.rankContext(view));
 	const x = $derived(resolveAxis(matrix.x, ctx, items));
 	const y = $derived(resolveAxis(matrix.y, ctx, items));
 	const quadrants = $derived(quadrantsOf(matrix));
+	const walkOrder = $derived(walkOrderOf(matrix));
 	const placement = $derived(placeItems(items, x, y));
 	const byQuadrant = $derived(groupByQuadrant(placement.placed));
 	const notices = $derived([x.problem, y.problem, x.warning, y.warning].filter((n): n is string => !!n));
@@ -79,7 +80,7 @@
 
 	// ---- Standup walk-through: Do → Schedule → Delegate → Drop, then triage ------------------
 	const walk = $derived(
-		[...QUADRANT_ORDER.flatMap((q) => byQuadrant[q].map((p) => p.item)), ...placement.unplaced.map((u) => u.item)].filter(
+		[...walkOrder.flatMap((q) => byQuadrant[q].map((p) => p.item)), ...placement.unplaced.map((u) => u.item)].filter(
 			passesFocus
 		)
 	);
@@ -141,6 +142,7 @@
 <div class="matrix">
 	<div class="primary">
 		<QuadrantBoard
+			label={matrix.label}
 			placed={placement.placed}
 			{x}
 			{y}
@@ -160,7 +162,7 @@
 			slot={selected ? slotFor(selected) : 'none'}
 			epicTitle={selected ? epicTitle(selected) : ''}
 			quadrantName={selectedQuadrant}
-			firstQuadrant={quadrants.highHigh.name}
+			firstQuadrant={quadrants[walkOrder[0]].name}
 			{facts}
 			position={walkIndex + 1}
 			total={walk.length}

@@ -33,7 +33,7 @@ step('sign in through OAuth', async (p) => {
 });
 
 step('matrix (standup) renders quadrants and the walk-through', async (p) => {
-	await open(p, '/v/standup');
+	await open(p, '/p/standup');
 	await p.waitForSelector('[aria-label="Eisenhower matrix"]');
 	if ((await p.locator('.note').count()) < 5) throw new Error('too few notes');
 	await p.keyboard.press('ArrowRight');
@@ -150,11 +150,40 @@ step('a cross-origin write is refused', async (p) => {
 	if (res.status() !== 403) throw new Error(`cross-origin write got ${res.status()}`);
 });
 
+step('Prioritization section: both tools render, Display is hidden, views have no Matrix', async (p) => {
+	await open(p, '/');
+	const nav = p.locator('nav[aria-label="Board navigation"]');
+	await nav.locator('h2', { hasText: 'Prioritization' }).waitFor();
+	await nav.locator('a[href="/p/priority-effort"]').click();
+	await p.waitForURL('**/p/priority-effort');
+	await p.waitForSelector('text=Quick wins');
+	if (await p.locator('button:has-text("Display")').count()) throw new Error('tool page shows the Display menu');
+	await open(p, '/v/my-issues');
+	await p.click('button:has-text("Display")');
+	if (await p.locator('[aria-label="Layout"] button', { hasText: 'Matrix' }).count()) throw new Error('views still offer a Matrix layout');
+	await p.keyboard.press('Escape');
+});
+
+step('an old matrix share link opens as a list with a notice', async (p) => {
+	const LZ = require('lz-string');
+	const old = {
+		version: 1, id: 'old', name: 'Old matrix', layout: 'matrix',
+		filter: { op: 'and', rules: [] }, orderBy: [],
+		display: { properties: [], subIssues: 'flat', showEmptyGroups: false, completed: 'none' },
+		matrix: { x: { field: { field: 'native:weight' } }, y: { field: { name: 'Priority' } } }
+	};
+	await open(p, '/v/shared?v=' + LZ.compressToEncodedURIComponent(JSON.stringify(old)));
+	await p.waitForSelector('text=moved to Prioritization');
+	if (await p.locator('[aria-label="Eisenhower matrix"]').count()) throw new Error('old link still drew a matrix');
+});
+
 step('the kiosk shows config views and cannot write', async (p, ctx, browser) => {
 	const k = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 	const kp = await k.newPage();
 	await kp.goto(BASE + '/kiosk/' + (process.env.KIOSK_KEY || 'fake-kiosk-key-0123456789abcdef'));
 	await kp.waitForSelector('text=Kiosk · read-only');
+	// KIOSK_VIEWS lists "standup" (a prioritization tool) first, so "/" opens it
+	if (process.env.KIOSK_VIEWS?.startsWith('standup')) await kp.waitForSelector('[aria-label="Eisenhower matrix"]');
 	if (await kp.locator('text=New issue').count()) throw new Error('kiosk offers "New issue"');
 	const res = await kp.request.post(BASE + '/api/items/update', {
 		headers: { origin: BASE, 'content-type': 'application/json' },

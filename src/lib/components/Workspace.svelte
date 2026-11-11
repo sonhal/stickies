@@ -29,9 +29,13 @@
 		actions?: Snippet;
 		/** Editors for the matrix walk panel */
 		matrixDetails?: Snippet<[import('$lib/fields/types').WorkItem]>;
+		/** Where view changes go. Default: the URL (?v=), which is how user views keep edits. */
+		onchange?: (next: ViewDefinition) => void;
+		/** Show the Display menu. Prioritization tools hide it: their layout comes from config. */
+		showDisplay?: boolean;
 	}
 
-	let { view, scope, heading, subheading, dirty = false, actions, matrixDetails }: Props = $props();
+	let { view, scope, heading, subheading, dirty = false, actions, matrixDetails, onchange, showDisplay = true }: Props = $props();
 	const board = getBoard();
 	const ui = getUi();
 
@@ -75,6 +79,7 @@
 
 	/** Every change to the view goes into the URL (?v=), so reload and back/forward keep it. */
 	function change(next: ViewDefinition) {
+		if (onchange) return onchange(next);
 		const url = new URL(page.url);
 		url.searchParams.set('v', encodeView(next));
 		goto(url.pathname + url.search, { replaceState: true, keepFocus: true, noScroll: true });
@@ -103,7 +108,7 @@
 		</div>
 		<div class="tools">
 			{@render actions?.()}
-			<DisplayMenu view={effective} onchange={(v) => change({ ...v, scope: view.scope })} />
+			{#if showDisplay}<DisplayMenu view={effective} onchange={(v) => change({ ...v, scope: view.scope })} />{/if}
 		</div>
 	</header>
 
@@ -118,6 +123,11 @@
 		/>
 	</div>
 
+	{#if view.migrated === 'matrixLayout'}
+		<p class="notice warn" role="status">
+			This view used the Matrix layout, which moved to <strong>Prioritization</strong> in the sidebar. It opens as a list now.
+		</p>
+	{/if}
 	{#if result.groupProblem}<p class="notice warn" role="status">{result.groupProblem}. Showing the view without it.</p>{/if}
 	{#if missingProps}<p class="notice warn" role="status">{missingProps} display propert{missingProps === 1 ? 'y refers to a field' : 'ies refer to fields'} that no longer exist.</p>{/if}
 	{#each board.reg.warnings as w (w)}<p class="notice warn" role="status">{w}</p>{/each}
