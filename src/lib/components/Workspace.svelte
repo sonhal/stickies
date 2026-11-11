@@ -85,7 +85,7 @@
 		let parentId = ui.createDefaults.parentId;
 		let projectId = ui.createDefaults.projectId;
 		if (g.field && g.value) {
-			if (g.field.key === 'native:parent') parentId = g.value;
+			if (g.field.key === 'native:parent' || g.field.key === 'native:epic') parentId = g.value;
 			else if (g.field.key === 'native:project') projectId = g.value;
 			else values[g.field.key] = g.value;
 		}

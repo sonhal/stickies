@@ -110,7 +110,7 @@ function resolveIds(field: FieldDef, values: string[], r: FieldRegistry): { ids:
 		}
 		const o = resolveOption(field, v);
 		if (o) ids.add(o.id);
-		else if (field.key === 'native:project' || field.key === 'native:parent') ids.add(v); // refs can point outside the option list
+		else if (field.key === 'native:project' || field.key === 'native:parent' || field.key === 'native:epic') ids.add(v); // refs can point outside the option list
 		else missing.push(v);
 	}
 	return { ids, missing };
@@ -413,6 +413,8 @@ function emptyLabel(field: FieldDef): string {
 			return 'Unassigned';
 		case 'native:parent':
 			return 'No parent';
+		case 'native:epic':
+			return 'No epic';
 		case 'native:project':
 			return 'No project';
 		default:

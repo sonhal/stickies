@@ -192,7 +192,9 @@ function render(raw) {
 	}
 	widgets.push({
 		type: 'HIERARCHY',
-		parent: d.parent ? { id: d.parent } : null,
+		parent: d.parent && items.get(d.parent)
+			? { id: d.parent, title: items.get(d.parent).title, state: items.get(d.parent).state, workItemType: { name: items.get(d.parent).workItemType.name } }
+			: d.parent ? { id: d.parent } : null,
 		rolledUpCountsByType: Object.entries(counts).map(([name, c]) => ({ workItemType: { name }, countsByState: c }))
 	});
 	if (!isEpic) {

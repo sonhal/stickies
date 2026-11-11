@@ -12,7 +12,7 @@
  * matrix axis splits by the option's position in GitLab's order (`split: 'half'`).
  *
  * Native field keys: native:status, native:assignees, native:labels, native:weight, native:dueDate,
- * native:startDate, native:milestone, native:iteration, native:project, native:parent, native:type,
+ * native:startDate, native:milestone, native:iteration, native:project, native:parent, native:epic, native:type,
  * native:createdAt, native:updatedAt. Custom fields: { name: '<field name>' } or { field: 'custom:<id>' }.
  *
  * Every view is validated (src/lib/query/schema.ts) by the unit tests, so a broken view fails CI.
@@ -114,7 +114,8 @@ export const defaultViews: ViewDefinition[] = defineViews([
 		description: 'Every open issue under its epic. Kiosk-friendly.',
 		layout: 'list',
 		filter: and(notEpics),
-		groupBy: { field: 'native:parent' },
+		// Epic, not parent: a task is grouped under its issue's epic, not under the issue.
+		groupBy: { field: 'native:epic' },
 		subGroupBy: STATUS,
 		orderBy: byPriority,
 		display: { ...listDisplay, completed: 'none' }

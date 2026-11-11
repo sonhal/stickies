@@ -180,6 +180,29 @@ describe('mergeSeen', () => {
 		expect(opts.map((o) => o.position)).toEqual([0, 1]);
 	});
 
+	it('lists loaded epics and unloaded parents that GitLab says are epics as Epic options', () => {
+		const s3 = emptySeen();
+		const child = (parent: Record<string, unknown>) =>
+			normalizeWorkItem(
+				{
+					id: `gid://gitlab/WorkItem/c-${Math.random()}`,
+					iid: 1,
+					title: 'child',
+					state: 'OPEN',
+					createdAt: '2026-11-01T00:00:00Z',
+					updatedAt: '2026-11-01T00:00:00Z',
+					widgets: [{ type: 'HIERARCHY', parent }]
+				} as unknown as RawWorkItem,
+				{ projectPaths, seen: s3 }
+			);
+		const kids = [
+			child({ id: 'gid://gitlab/WorkItem/999', title: 'Old closed epic', state: 'CLOSED', workItemType: { name: 'Epic' } }),
+			child({ id: 'gid://gitlab/WorkItem/997', title: 'Some issue', state: 'OPEN', workItemType: { name: 'Issue' } })
+		];
+		const opts = mergeSeen(reg, s3, kids).fields.find((f) => f.key === 'native:epic')!.options!;
+		expect(opts.map((o) => o.label)).toEqual(['Old closed epic (closed)']);
+	});
+
 	it('does not change the input registry', () => {
 		expect(reg.fields.find((f) => f.key === 'native:parent')!.options).toEqual([]);
 	});

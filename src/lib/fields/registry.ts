@@ -124,7 +124,7 @@ export const PARENT_NOT_LOADED = 'Parent not on the board';
 /** Label for a value whose option the registry doesn't know. Never throws, never returns ''. */
 export function unknownOptionLabel(field: FieldDef, id: string): string {
 	if (field.key === 'native:project') return id;
-	if (field.key === 'native:parent') return PARENT_NOT_LOADED;
+	if (field.key === 'native:parent' || field.key === 'native:epic') return PARENT_NOT_LOADED;
 	return '(removed option)';
 }
 

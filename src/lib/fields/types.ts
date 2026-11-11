@@ -18,6 +18,7 @@ export const NATIVE_FIELDS = [
 	'iteration',
 	'project',
 	'parent',
+	'epic',
 	'type',
 	'createdAt',
 	'updatedAt'

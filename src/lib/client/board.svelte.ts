@@ -6,6 +6,7 @@ import { getContext, setContext } from 'svelte';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { applyWrite, currentWriteValue, type WriteField, type WriteValue } from '$lib/fields/apply';
 import { EpicColors } from '$lib/colors';
+import { withEpics } from '$lib/fields/epic';
 import { formatValue, optionById, resolveField, statusOption } from '$lib/fields/registry';
 import type { BoardData, FieldDef, FieldKey, FieldRegistry, OptionDef, WorkItem } from '$lib/fields/types';
 import type { RankContext } from '$lib/query/rank';
@@ -40,12 +41,15 @@ export class BoardState {
 	setData(data: BoardData) {
 		this.data = data;
 		// Keep optimistic values for items with a write still in flight.
-		this.items = this.pending.size ? data.items.map((i) => (this.pending.has(i.id) ? (this.byId.get(i.id) ?? i) : i)) : data.items;
+		const items = this.pending.size ? data.items.map((i) => (this.pending.has(i.id) ? (this.byId.get(i.id) ?? i) : i)) : data.items;
+		this.items = withEpics(items, data.registry);
 	}
 
 	private replace(item: WorkItem) {
 		const i = this.items.findIndex((x) => x.id === item.id);
-		this.items = i === -1 ? [item, ...this.items] : this.items.map((x) => (x.id === item.id ? item : x));
+		const items = i === -1 ? [item, ...this.items] : this.items.map((x) => (x.id === item.id ? item : x));
+		// Recompute for everyone: a new parent on an issue also moves the tasks under it.
+		this.items = withEpics(items, this.reg);
 	}
 
 	/**

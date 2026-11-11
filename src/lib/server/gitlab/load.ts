@@ -7,6 +7,7 @@
  *
  * Two people can see different items and fields, so one viewer's data is never served to another.
  */
+import { withEpics } from '$lib/fields/epic';
 import type { BoardData, FieldRegistry, LoadProblem, WorkItem } from '$lib/fields/types';
 import { ConfigError, serverConfig, type ServerConfig } from '../config';
 import { checkServiceToken } from '../oauth';
@@ -186,9 +187,10 @@ async function fetchAll(session: Session, cfg: ServerConfig, key: string, forceS
 }
 
 function compose(cfg: ServerConfig, schema: SchemaEntry, items: ItemsEntry): BoardData {
+	const registry = mergeSeen(schema.registry, items.seen, items.items);
 	return {
-		items: items.items,
-		registry: mergeSeen(schema.registry, items.seen, items.items),
+		items: withEpics(items.items, registry),
+		registry,
 		fetchedAt: new Date(items.at).toISOString(),
 		stale: false,
 		problem: null,

@@ -134,7 +134,7 @@ fragment BoardWorkItem on WorkItem {
     ... on WorkItemWidgetWeight { weight }
     ... on WorkItemWidgetStartAndDueDate { startDate dueDate }
     ... on WorkItemWidgetHierarchy {
-      parent { id title state }
+      parent { id title state workItemType { name } }
       ${c.rolledUpCounts ? 'rolledUpCountsByType { workItemType { name } countsByState { all closed } }' : ''}
     }
     ${c.status ? `... on WorkItemWidgetStatus { status { ${statusFields(c)} } }` : ''}

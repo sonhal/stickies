@@ -81,7 +81,7 @@ interface RawWidget {
 	weight?: number | null;
 	startDate?: string | null;
 	dueDate?: string | null;
-	parent?: { id: string; title?: string | null; state?: string | null } | null;
+	parent?: { id: string; title?: string | null; state?: string | null; workItemType?: { name: string } | null } | null;
 	rolledUpCountsByType?: { workItemType?: { name: string } | null; countsByState?: { all?: number; closed?: number } | null }[] | null;
 	status?: RawStatus | null;
 	customFieldValues?: RawCustomFieldValue[] | null;
@@ -203,7 +203,7 @@ export interface Seen {
 	types: Map<string, WorkItemTypeDef>;
 	customOptions: Map<FieldKey, { def: RawCustomFieldRef; options: Map<string, string> }>;
 	/** Parents named on items, with the title GitLab sent: covers parents the board didn't load */
-	parents: Map<string, { title: string | null; closed: boolean }>;
+	parents: Map<string, { title: string | null; closed: boolean; isEpic: boolean }>;
 }
 
 export function emptySeen(): Seen {
@@ -285,7 +285,8 @@ export function normalizeWorkItem(raw: RawWorkItem, ctx: NormalizeContext): Work
 			const prev = seen.parents.get(w.parent.id);
 			seen.parents.set(w.parent.id, {
 				title: title ?? prev?.title ?? null,
-				closed: String(w.parent.state ?? '').toUpperCase() === 'CLOSED' || !!prev?.closed
+				closed: String(w.parent.state ?? '').toUpperCase() === 'CLOSED' || !!prev?.closed,
+				isEpic: String(w.parent.workItemType?.name ?? '').toLowerCase() === 'epic' || !!prev?.isEpic
 			});
 		}
 		if (Array.isArray(w.rolledUpCountsByType)) {
@@ -397,6 +398,7 @@ export const NATIVE_NAMES: Record<string, string> = {
 	'native:iteration': 'Iteration',
 	'native:project': 'Project',
 	'native:parent': 'Parent',
+	'native:epic': 'Epic',
 	'native:type': 'Type',
 	'native:createdAt': 'Created',
 	'native:updatedAt': 'Updated'
@@ -485,6 +487,8 @@ export function normalizeSchema(raw: RawSchema, opts: { iterations: boolean }): 
 			: []),
 		native('native:project', 'ref', { options: projects.map((p, i) => ({ id: p.id, label: p.name, position: i, hint: p.fullPath })) }),
 		native('native:parent', 'ref', { options: [], editable: true }),
+		// Derived, read-only: the nearest epic above an item (see src/lib/fields/epic.ts). Set the parent to change it.
+		native('native:epic', 'ref', { options: [] }),
 		native('native:type', 'singleSelect', {
 			options: types.map((t, i) => ({ id: t.name, label: t.name, position: i })),
 			ordered: false
@@ -586,6 +590,19 @@ export function mergeSeen(reg: FieldRegistry, seen: Seen, items: WorkItem[]): Fi
 			...candidates.map((i) => ({ id: i.id, label: i.title, hint: i.ref })),
 			...unloaded
 		].map((o, n) => ({ ...o, position: n }));
+	}
+
+	// Epic options: loaded epics, plus epics named as a parent but not loaded (e.g. closed long ago).
+	const epic = byKey.get('native:epic');
+	if (epic) {
+		const loadedEpics = items.filter((i) => i.type.toLowerCase() === 'epic');
+		const have = new Set(loadedEpics.map((i) => i.id));
+		const extra = [...seen.parents]
+			.filter(([id, p]) => p.isEpic && !have.has(id))
+			.map(([id, p]) => ({ id, label: p.title ? (p.closed ? `${p.title} (closed)` : p.title) : PARENT_NOT_LOADED }));
+		epic.options = [...loadedEpics.map((i) => ({ id: i.id, label: i.title, hint: i.ref })), ...extra]
+			.sort((a, b) => a.label.localeCompare(b.label))
+			.map((o, n) => ({ ...o, position: n }));
 	}
 
 	// Custom fields with values but no active definition: show them, read-only.
