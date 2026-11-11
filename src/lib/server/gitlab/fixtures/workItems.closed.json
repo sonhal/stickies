@@ -1,0 +1,17 @@
+{
+  "group": { "workItems": {
+    "pageInfo": { "hasNextPage": false, "endCursor": null },
+    "nodes": [
+      {
+        "id": "gid://gitlab/WorkItem/1003", "iid": "9", "title": "Remove the legacy webhook", "state": "CLOSED",
+        "createdAt": "2026-09-01T09:00:00Z", "updatedAt": "2026-11-07T10:00:00Z", "closedAt": "2026-11-07T10:00:00Z",
+        "webUrl": "https://gitlab.example.com/acme/platform/api/-/work_items/9", "reference": "acme/platform/api#9",
+        "workItemType": { "id": "gid://gitlab/WorkItems::Type/1", "name": "Issue" },
+        "namespace": { "id": "gid://gitlab/Namespaces::ProjectNamespace/31", "fullPath": "acme/platform/api", "name": "API" },
+        "widgets": [
+          { "type": "STATUS", "status": { "id": "gid://gitlab/WorkItems::Statuses::SystemDefined::Status/4", "name": "Won't do", "color": "#DD2B0E", "category": "CANCELED" } }
+        ]
+      }
+    ]
+  } }
+}

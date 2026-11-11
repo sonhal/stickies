@@ -1,0 +1,34 @@
+const { chromium } = require('playwright');
+(async () => {
+	const base = 'http://localhost:5173';
+	const b = await chromium.launch();
+	const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+	const errors = [];
+	p.on('pageerror', (e) => errors.push(e.message));
+	p.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+	await p.goto(base + '/signin');
+	await p.click('text=Sign in with GitLab');
+	await p.waitForLoadState('networkidle');
+	await p.goto(base + '/v/my-issues');
+	await p.waitForLoadState('networkidle');
+	await p.locator('.row .hit').first().click();
+	await p.waitForTimeout(300);
+	await p.keyboard.press('s');
+	await p.waitForTimeout(200);
+	await p.keyboard.type('In progress');
+	await p.keyboard.press('Enter');
+	await p.waitForTimeout(800);
+	const w = await (await fetch('http://localhost:4010/__writes')).json();
+	console.log('writes', w);
+	await p.screenshot({ path: process.argv[2] });
+	// create
+	await p.keyboard.press('Escape');
+	await p.keyboard.press('c');
+	await p.waitForTimeout(300);
+	await p.keyboard.type('Created from the smoke test');
+	await p.click('button:has-text("Create issue")');
+	await p.waitForTimeout(800);
+	console.log('toast', await p.locator('.toast').allTextContents());
+	console.log('errors', errors);
+	await b.close();
+})();

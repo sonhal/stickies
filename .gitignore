@@ -1,0 +1,11 @@
+node_modules
+/build
+/.svelte-kit
+/package
+.DS_Store
+.env
+.env.*
+!.env.example
+vite.config.*.timestamp-*
+introspect-out
+smoke-failure-*.png

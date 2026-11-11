@@ -1,0 +1,12 @@
+{
+  "status": { "name": "WorkItemWidgetStatus" },
+  "statusType": { "fields": [{ "name": "id" }, { "name": "name" }, { "name": "color" }, { "name": "iconName" }, { "name": "category" }] },
+  "customFields": { "name": "WorkItemWidgetCustomFields" },
+  "selectValue": { "name": "WorkItemSelectFieldValue" },
+  "numberValue": { "name": "WorkItemNumberFieldValue" },
+  "textValue": { "name": "WorkItemTextFieldValue" },
+  "dateValue": null,
+  "hierarchy": { "fields": [{ "name": "parent" }, { "name": "children" }, { "name": "hasChildren" }, { "name": "rolledUpCountsByType" }] },
+  "iteration": { "name": "WorkItemWidgetIteration" },
+  "group": { "fields": [{ "name": "customFields" }, { "name": "workItemTypes" }, { "name": "workItems" }, { "name": "projects" }] }
+}

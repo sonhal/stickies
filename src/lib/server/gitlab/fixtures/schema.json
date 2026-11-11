@@ -1,0 +1,88 @@
+{
+  "currentUser": { "id": "gid://gitlab/User/101", "username": "alex", "name": "Alex Example" },
+  "group": {
+    "id": "gid://gitlab/Group/9",
+    "fullPath": "acme/platform",
+    "name": "Platform",
+    "customFields": {
+      "nodes": [
+        {
+          "id": "gid://gitlab/Issuables::CustomField/7", "name": "Priority", "fieldType": "SINGLE_SELECT", "active": true,
+          "selectOptions": [
+            { "id": "gid://gitlab/Issuables::CustomFieldSelectOption/71", "value": "Critical" },
+            { "id": "gid://gitlab/Issuables::CustomFieldSelectOption/72", "value": "High" },
+            { "id": "gid://gitlab/Issuables::CustomFieldSelectOption/73", "value": "Medium" },
+            { "id": "gid://gitlab/Issuables::CustomFieldSelectOption/74", "value": "Low" }
+          ],
+          "workItemTypes": [{ "id": "gid://gitlab/WorkItems::Type/1", "name": "Issue" }, { "id": "gid://gitlab/WorkItems::Type/5", "name": "Task" }]
+        },
+        {
+          "id": "gid://gitlab/Issuables::CustomField/8", "name": "Effort", "fieldType": "SINGLE_SELECT", "active": true,
+          "selectOptions": [
+            { "id": "gid://gitlab/Issuables::CustomFieldSelectOption/81", "value": "Large" },
+            { "id": "gid://gitlab/Issuables::CustomFieldSelectOption/82", "value": "Medium" },
+            { "id": "gid://gitlab/Issuables::CustomFieldSelectOption/83", "value": "Small" }
+          ],
+          "workItemTypes": [{ "id": "gid://gitlab/WorkItems::Type/1", "name": "Issue" }]
+        },
+        {
+          "id": "gid://gitlab/Issuables::CustomField/9", "name": "Components", "fieldType": "MULTI_SELECT", "active": true,
+          "selectOptions": [
+            { "id": "gid://gitlab/Issuables::CustomFieldSelectOption/91", "value": "API" },
+            { "id": "gid://gitlab/Issuables::CustomFieldSelectOption/92", "value": "Web" },
+            { "id": "gid://gitlab/Issuables::CustomFieldSelectOption/93", "value": "Billing" }
+          ],
+          "workItemTypes": []
+        },
+        { "id": "gid://gitlab/Issuables::CustomField/10", "name": "Story points", "fieldType": "NUMBER", "active": true, "selectOptions": [], "workItemTypes": [{ "id": "gid://gitlab/WorkItems::Type/1", "name": "Issue" }] },
+        { "id": "gid://gitlab/Issuables::CustomField/11", "name": "Customer", "fieldType": "TEXT", "active": true, "selectOptions": [], "workItemTypes": [] },
+        { "id": "gid://gitlab/Issuables::CustomField/12", "name": "Confidence", "fieldType": "RATING", "active": true, "selectOptions": [], "workItemTypes": [] }
+      ]
+    },
+    "workItemTypes": {
+      "nodes": [
+        { "id": "gid://gitlab/WorkItems::Type/1", "name": "Issue", "widgetDefinitions": [
+          { "type": "ASSIGNEES" },
+          { "type": "STATUS", "allowedStatuses": [
+            { "id": "gid://gitlab/WorkItems::Statuses::SystemDefined::Status/1", "name": "To do", "color": "#737278", "category": "TO_DO" },
+            { "id": "gid://gitlab/WorkItems::Statuses::SystemDefined::Status/2", "name": "In progress", "color": "#1f75cb", "category": "IN_PROGRESS" },
+            { "id": "gid://gitlab/WorkItems::Statuses::SystemDefined::Status/3", "name": "Done", "color": "#108548", "category": "DONE" },
+            { "id": "gid://gitlab/WorkItems::Statuses::SystemDefined::Status/4", "name": "Won't do", "color": "#DD2B0E", "category": "CANCELED" },
+            { "id": "gid://gitlab/WorkItems::Statuses::SystemDefined::Status/5", "name": "Duplicate", "color": "#DD2B0E", "category": "CANCELED" },
+            { "id": "gid://gitlab/WorkItems::Statuses::Custom::Status/31", "name": "Blocked", "color": "#c91c00", "category": "IN_PROGRESS" },
+            { "id": "gid://gitlab/WorkItems::Statuses::Custom::Status/30", "name": "Needs triage", "color": "#9e5400", "category": "TRIAGE" }
+          ] }
+        ] },
+        { "id": "gid://gitlab/WorkItems::Type/5", "name": "Task", "widgetDefinitions": [
+          { "type": "STATUS", "allowedStatuses": [
+            { "id": "gid://gitlab/WorkItems::Statuses::SystemDefined::Status/1", "name": "To do", "color": "#737278", "category": "TO_DO" },
+            { "id": "gid://gitlab/WorkItems::Statuses::SystemDefined::Status/3", "name": "Done", "color": "#108548", "category": "DONE" }
+          ] }
+        ] },
+        { "id": "gid://gitlab/WorkItems::Type/8", "name": "Epic", "widgetDefinitions": [ { "type": "HIERARCHY" } ] }
+      ]
+    },
+    "projects": { "nodes": [
+      { "id": "gid://gitlab/Project/21", "name": "API", "fullPath": "acme/platform/api", "webUrl": "https://gitlab.example.com/acme/platform/api", "archived": false },
+      { "id": "gid://gitlab/Project/22", "name": "Web", "fullPath": "acme/platform/web", "webUrl": "https://gitlab.example.com/acme/platform/web", "archived": false },
+      { "id": "gid://gitlab/Project/23", "name": "Old thing", "fullPath": "acme/platform/old", "webUrl": "https://gitlab.example.com/acme/platform/old", "archived": true }
+    ] },
+    "labels": { "nodes": [
+      { "id": "gid://gitlab/GroupLabel/301", "title": "bug", "color": "#dc143c" },
+      { "id": "gid://gitlab/GroupLabel/302", "title": "area::backend", "color": "#6699cc" },
+      { "id": "gid://gitlab/GroupLabel/303", "title": "area::frontend", "color": "#5cb85c" },
+      { "id": "gid://gitlab/GroupLabel/304", "title": "customer", "color": "javascript:alert(1)" }
+    ] },
+    "milestones": { "nodes": [
+      { "id": "gid://gitlab/Milestone/401", "title": "Q4 release", "dueDate": "2026-12-15" },
+      { "id": "gid://gitlab/Milestone/402", "title": "Q1 release", "dueDate": "2027-03-15" }
+    ] },
+    "iterations": { "nodes": [
+      { "id": "gid://gitlab/Iteration/501", "title": null, "startDate": "2026-11-02", "dueDate": "2026-11-15", "iterationCadence": { "id": "gid://gitlab/Iterations::Cadence/1", "title": "Sprints" } }
+    ] },
+    "groupMembers": { "nodes": [
+      { "user": { "id": "gid://gitlab/User/101", "username": "alex", "name": "Alex Example" } },
+      { "user": { "id": "gid://gitlab/User/102", "username": "sam", "name": "Sam Sample" } }
+    ] }
+  }
+}

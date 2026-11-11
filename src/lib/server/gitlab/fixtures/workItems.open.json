@@ -1,0 +1,64 @@
+{
+  "group": { "workItems": {
+    "pageInfo": { "hasNextPage": false, "endCursor": "eyJpZCI6IjEifQ" },
+    "nodes": [
+      {
+        "id": "gid://gitlab/WorkItem/1001", "iid": "12", "title": "Checkout fails for EU customers", "state": "OPEN",
+        "createdAt": "2026-10-01T09:00:00Z", "updatedAt": "2026-11-09T10:00:00Z", "closedAt": null,
+        "webUrl": "https://gitlab.example.com/acme/platform/api/-/work_items/12", "reference": "acme/platform/api#12",
+        "workItemType": { "id": "gid://gitlab/WorkItems::Type/1", "name": "Issue" },
+        "namespace": { "id": "gid://gitlab/Namespaces::ProjectNamespace/31", "fullPath": "acme/platform/api", "name": "API" },
+        "widgets": [
+          { "type": "DESCRIPTION", "description": "## Problem\nCustomers in the **EU** get a 500.\n<script>alert(1)</script>" },
+          { "type": "ASSIGNEES", "assignees": { "nodes": [ { "id": "gid://gitlab/User/102", "username": "sam", "name": "Sam Sample" } ] } },
+          { "type": "LABELS", "labels": { "nodes": [ { "id": "gid://gitlab/GroupLabel/301", "title": "bug", "color": "#dc143c" }, { "id": "gid://gitlab/GroupLabel/302", "title": "area::backend", "color": "#6699cc" } ] } },
+          { "type": "MILESTONE", "milestone": { "id": "gid://gitlab/Milestone/401", "title": "Q4 release", "dueDate": "2026-12-15" } },
+          { "type": "ITERATION", "iteration": null },
+          { "type": "WEIGHT", "weight": 3 },
+          { "type": "START_AND_DUE_DATE", "startDate": null, "dueDate": "2026-11-20" },
+          { "type": "HIERARCHY", "parent": { "id": "gid://gitlab/WorkItem/900" }, "rolledUpCountsByType": [] },
+          { "type": "STATUS", "status": { "id": "gid://gitlab/WorkItems::Statuses::SystemDefined::Status/2", "name": "In progress", "color": "#1f75cb", "category": "IN_PROGRESS" } },
+          { "type": "CUSTOM_FIELDS", "customFieldValues": [
+            { "customField": { "id": "gid://gitlab/Issuables::CustomField/7", "name": "Priority", "fieldType": "SINGLE_SELECT" }, "selectedOptions": [ { "id": "gid://gitlab/Issuables::CustomFieldSelectOption/71", "value": "Critical" } ] },
+            { "customField": { "id": "gid://gitlab/Issuables::CustomField/8", "name": "Effort", "fieldType": "SINGLE_SELECT" }, "selectedOptions": [] },
+            { "customField": { "id": "gid://gitlab/Issuables::CustomField/9", "name": "Components", "fieldType": "MULTI_SELECT" }, "selectedOptions": [ { "id": "gid://gitlab/Issuables::CustomFieldSelectOption/91", "value": "API" }, { "id": "gid://gitlab/Issuables::CustomFieldSelectOption/93", "value": "Billing" } ] },
+            { "customField": { "id": "gid://gitlab/Issuables::CustomField/10", "name": "Story points", "fieldType": "NUMBER" }, "numberValue": 5 },
+            { "customField": { "id": "gid://gitlab/Issuables::CustomField/11", "name": "Customer", "fieldType": "TEXT" }, "textValue": "<b>Big Co</b>" },
+            { "customField": { "id": "gid://gitlab/Issuables::CustomField/12", "name": "Confidence", "fieldType": "RATING" } }
+          ] }
+        ]
+      },
+      {
+        "id": "gid://gitlab/WorkItem/900", "iid": "3", "title": "Payments v2", "state": "OPEN",
+        "createdAt": "2026-08-01T09:00:00Z", "updatedAt": "2026-11-08T10:00:00Z", "closedAt": null,
+        "webUrl": "https://gitlab.example.com/groups/acme/platform/-/epics/3", "reference": "acme/platform&3",
+        "workItemType": { "id": "gid://gitlab/WorkItems::Type/8", "name": "Epic" },
+        "namespace": { "id": "gid://gitlab/Group/9", "fullPath": "acme/platform", "name": "Platform" },
+        "widgets": [
+          { "type": "DESCRIPTION", "description": "Move payments to the new provider." },
+          { "type": "ASSIGNEES", "assignees": { "nodes": [] } },
+          { "type": "LABELS", "labels": { "nodes": [] } },
+          { "type": "START_AND_DUE_DATE", "startDate": "2026-09-01", "dueDate": "2026-12-31" },
+          { "type": "HIERARCHY", "parent": null, "rolledUpCountsByType": [
+            { "workItemType": { "name": "Issue" }, "countsByState": { "all": 8, "opened": 3, "closed": 5 } },
+            { "workItemType": { "name": "Task" }, "countsByState": { "all": 2, "opened": 1, "closed": 1 } }
+          ] }
+        ]
+      },
+      {
+        "id": "gid://gitlab/WorkItem/1002", "iid": 13, "title": "Write the migration runbook", "state": "OPEN",
+        "createdAt": "2026-10-05T09:00:00Z", "updatedAt": "2026-11-01T10:00:00Z", "closedAt": null,
+        "webUrl": "javascript:alert(1)", "reference": "acme/platform/web#13",
+        "workItemType": { "id": "gid://gitlab/WorkItems::Type/5", "name": "Task" },
+        "namespace": { "id": "gid://gitlab/Namespaces::ProjectNamespace/32", "fullPath": "acme/platform/web", "name": "Web" },
+        "widgets": [
+          { "type": "HIERARCHY", "parent": { "id": "gid://gitlab/WorkItem/1001" } },
+          { "type": "STATUS", "status": { "id": "gid://gitlab/WorkItems::Statuses::Custom::Status/99", "name": "Waiting on vendor", "color": "#aa00aa", "category": "IN_PROGRESS" } },
+          { "type": "CUSTOM_FIELDS", "customFieldValues": [
+            { "customField": { "id": "gid://gitlab/Issuables::CustomField/77", "name": "Old field", "fieldType": "SINGLE_SELECT" }, "selectedOptions": [ { "id": "gid://gitlab/Issuables::CustomFieldSelectOption/771", "value": "Yes" } ] }
+          ] }
+        ]
+      }
+    ]
+  } }
+}
