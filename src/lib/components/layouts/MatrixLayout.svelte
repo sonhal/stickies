@@ -211,7 +211,7 @@
 <style>
 	.matrix {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(320px, 30%);
+		grid-template-columns: minmax(0, 1fr) minmax(260px, 24%);
 		gap: 16px;
 		align-items: start;
 	}

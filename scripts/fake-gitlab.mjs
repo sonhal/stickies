@@ -156,6 +156,32 @@ issues.forEach(([path, title, parent, prio, effort, status, weight], i) => {
 		updatedDays: (i % 9) + 0.2
 	});
 });
+// FAKE_GITLAB_EXTRA=N: N more generic open issues, to see how the views and matrices cope with volume.
+// Deterministic (uses rnd), spread over every priority, effort, weight and status.
+const EXTRA = Math.max(0, Math.min(500, Number(process.env.FAKE_GITLAB_EXTRA ?? 0) || 0));
+{
+	const verbs = ['Refactor', 'Document', 'Speed up', 'Add tests for', 'Clean up', 'Monitor', 'Simplify', 'Migrate', 'Audit', 'Cache'];
+	const things = ['the billing service', 'user settings', 'the search index', 'report exports', 'the admin panel', 'webhooks', 'session handling', 'the import pipeline', 'email templates', 'feature flags', 'the public API docs', 'background jobs'];
+	const prios = ['Critical', 'High', 'Medium', 'Low'];
+	const efforts = ['Small', 'Medium', 'Large'];
+	const statuses = [S.todo, S.todo, S.doing, S.doing, S.blocked, S.triage];
+	const paths = ['acme/platform/api', 'acme/platform/web', 'acme/platform/data'];
+	const epics = [E1, E2, E3, E4, null];
+	for (let n = 0; n < EXTRA; n++) {
+		makeItem({
+			path: paths[n % paths.length],
+			title: `${verbs[n % verbs.length]} ${things[(n * 7) % things.length]}`,
+			parent: epics[(n * 3) % epics.length],
+			prio: prios[Math.floor(rnd() * prios.length)],
+			effort: efforts[Math.floor(rnd() * efforts.length)],
+			status: statuses[Math.floor(rnd() * statuses.length)],
+			weight: [1, 2, 3, 5, 8][Math.floor(rnd() * 5)],
+			assignees: n % 4 ? [people[n % people.length]] : [],
+			updatedDays: (n % 9) + 0.5
+		});
+	}
+}
+
 // A few tasks under issues
 const firstIssue = [...items.values()].find((r) => r.title.startsWith('Checkout fails')).id;
 makeItem({ type: 'Task', path: 'acme/platform/api', title: 'Write a failing test for the VAT case', parent: firstIssue, status: S.done, assignees: [people[1]], closedDays: 1 });

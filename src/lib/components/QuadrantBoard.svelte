@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { groupByQuadrant, screenLayout, type Placed, type ResolvedAxis } from '$lib/query/matrix';
+	import { groupByQuadrant, quadrantCells, screenLayout, type Placed, type ResolvedAxis } from '$lib/query/matrix';
 	import type { QuadrantKey } from '$lib/query/types';
 	import { slotVar, type ColorSlot } from '$lib/colors';
 	import type { OptionDef, WorkItem } from '$lib/fields/types';
@@ -43,6 +43,8 @@
 		{#each row as key, c (key)}
 			{@const q = quadrants[key]}
 			{@const notes = groups[key]}
+			<!-- Cards sit on a grid by their scores: higher x further right, higher y further up -->
+			{@const grid = quadrantCells(notes, { invertX: x.config.invert, invertY: y.config.invert })}
 			<section
 				class="quadrant"
 				class:do={key === 'highHigh'}
@@ -55,28 +57,34 @@
 					<span class="hint">{q.hint}</span>
 				</header>
 
-				<div class="notes">
-					{#each notes as p (p.item.id)}
-						{@const slot = slotFor(p.item)}
-						{@const status = statusOf(p.item)}
-						<button
-							class="note"
-							class:dim={!isActive(p.item)}
-							class:selected={selectedId === p.item.id}
-							class:other={slot === 'other'}
-							style="--note: {slotVar(slot)}"
-							data-item={p.item.id}
-							tabindex={isActive(p.item) ? 0 : -1}
-							aria-label="{p.item.title}. Status: {status?.label ?? 'none'}. Epic: {epicTitle(p.item)}."
-							aria-pressed={selectedId === p.item.id}
-							onclick={() => onselect(p.item)}
-						>
-							<span class="title">{p.item.title}</span>
-							<span class="status" class:none={!status}>
-								{#if status?.color}<span class="dot" style="background: {status.color}" aria-hidden="true"></span>{/if}{status?.label ??
-									'no status'}
-							</span>
-						</button>
+				<div class="notes" style="--cols: {grid.cols}; --rows: {grid.rows}">
+					{#each grid.cells as cell (`${cell.row}:${cell.col}`)}
+						<div class="cell" style="grid-row: {cell.row}; grid-column: {cell.col}">
+							{#each cell.items as p (p.item.id)}
+								{@const slot = slotFor(p.item)}
+								{@const status = statusOf(p.item)}
+								<button
+									class="note"
+									class:dim={!isActive(p.item)}
+									class:selected={selectedId === p.item.id}
+									class:other={slot === 'other'}
+									style="--note: {slotVar(slot)}"
+									data-item={p.item.id}
+									tabindex={isActive(p.item) ? 0 : -1}
+									title="{p.item.title}
+{x.title}: {x.text(p.item)} · {y.title}: {y.text(p.item)} · {status?.label ?? 'no status'}"
+									aria-label="{p.item.title}. Status: {status?.label ?? 'none'}. Epic: {epicTitle(p.item)}."
+									aria-pressed={selectedId === p.item.id}
+									onclick={() => onselect(p.item)}
+								>
+									<span class="title">{p.item.title}</span>
+									<span class="status" class:none={!status}>
+										<span class="dot" style:background={status?.color ?? 'transparent'} aria-hidden="true"></span>
+										<span class="status-label">{status?.label ?? 'no status'}</span>
+									</span>
+								</button>
+							{/each}
+						</div>
 					{:else}
 						<p class="empty">Nothing here</p>
 					{/each}
@@ -130,7 +138,7 @@
 		background: var(--surface-1);
 		border: 1px solid var(--border);
 		border-radius: var(--radius);
-		padding: 12px 12px 10px;
+		padding: 10px 10px 8px;
 	}
 	.quadrant.do {
 		background: var(--quadrant-do-solid);
@@ -140,11 +148,11 @@
 		display: flex;
 		align-items: baseline;
 		gap: 8px;
-		margin-bottom: 10px;
+		margin-bottom: 6px;
 	}
 	h2 {
 		margin: 0;
-		font-size: 19px;
+		font-size: 17px;
 	}
 	.count {
 		font-size: 15px;
@@ -162,99 +170,97 @@
 		min-height: 0;
 		overflow-y: auto;
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-		grid-auto-rows: minmax(104px, auto);
-		gap: 12px;
+		grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr));
+		grid-template-rows: repeat(var(--rows, 1), auto);
+		/* Wider gaps between positions than between cards, so the placement reads */
+		gap: 8px 12px;
 		align-content: start;
-		padding: 4px 4px 8px;
+		padding: 2px;
 	}
-
-	/* ---- The sticky note ---------------------------------------------------- */
-	.note {
-		position: relative;
+	.cell {
 		display: flex;
 		flex-direction: column;
-		justify-content: space-between;
-		gap: 10px;
-		padding: 12px 12px 10px;
+		gap: 2px;
+		min-width: 0;
+	}
+
+	/* ---- The card: one line, epic color bar, status dot ------------------------ */
+	.note {
+		container-type: inline-size;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		height: 22px;
+		min-width: 0;
+		padding: 0 8px 0 7px;
 		text-align: left;
 		cursor: pointer;
-		/* Paper tinted with the epic color; a solid band of the same color on top. */
-		background: color-mix(in srgb, var(--note) 24%, var(--surface-2));
+		background: color-mix(in srgb, var(--note) 16%, var(--surface-2));
 		border: 0;
-		border-top: 6px solid var(--note);
-		border-radius: 3px 3px 10px 3px;
-		box-shadow:
-			0 1px 1px rgba(0, 0, 0, 0.08),
-			0 3px 8px rgba(0, 0, 0, 0.08);
+		border-left: 4px solid var(--note);
+		border-radius: 4px;
+		box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06);
 		transition:
-			transform 120ms ease,
 			opacity 150ms ease,
 			box-shadow 120ms ease;
 	}
-	/* A slight, deterministic tilt so it reads as paper, not as a table cell. */
-	.note:nth-child(3n + 1) {
-		transform: rotate(-0.6deg);
-	}
-	.note:nth-child(3n + 2) {
-		transform: rotate(0.5deg);
-	}
 	.note:hover,
 	.note:focus-visible {
-		transform: translateY(-2px) rotate(0deg);
-		box-shadow:
-			0 2px 2px rgba(0, 0, 0, 0.1),
-			0 8px 18px rgba(0, 0, 0, 0.14);
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 3px 8px rgba(0, 0, 0, 0.1);
 	}
 	.note.selected {
-		transform: scale(1.03);
-		outline: 3px solid var(--text-primary);
-		outline-offset: 2px;
+		outline: 2px solid var(--text-primary);
+		outline-offset: 1px;
 		z-index: 1;
 	}
 	.note.other {
 		outline: 1.5px dashed var(--text-muted);
-		outline-offset: -4px;
+		outline-offset: -2px;
 	}
 	.note.dim {
 		opacity: 0.18;
 	}
 
 	.title {
+		flex: 1;
+		min-width: 0;
 		color: var(--text-primary);
-		font-size: 15px;
+		font-size: 12.5px;
 		font-weight: 600;
-		line-height: 1.3;
-		display: -webkit-box;
-		-webkit-line-clamp: 4;
-		line-clamp: 4;
-		-webkit-box-orient: vertical;
+		white-space: nowrap;
 		overflow: hidden;
-		overflow-wrap: anywhere;
+		text-overflow: ellipsis;
 	}
 	.status {
-		align-self: flex-start;
-		font-size: 12px;
-		font-weight: 600;
-		line-height: 1;
-		padding: 4px 8px;
-		border-radius: 999px;
-		color: var(--text-primary);
-		background: var(--surface-2);
-		border: 1px solid color-mix(in srgb, var(--note) 55%, var(--border));
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		flex: 0 1 auto;
+		min-width: 0;
+		max-width: 45%;
+		font-size: 11px;
+		color: var(--text-muted);
+		white-space: nowrap;
+	}
+	.status-label {
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.status.none {
-		color: var(--text-muted);
-		font-weight: 500;
 		font-style: italic;
 	}
 	.dot {
-		display: inline-block;
+		flex: none;
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
-		margin-right: 5px;
-		vertical-align: 0;
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-muted) 50%, transparent);
+	}
+	/* Narrow cards (several positions side by side): keep the dot, drop the status text */
+	@container (max-width: 190px) {
+		.status-label {
+			display: none;
+		}
 	}
 	.empty {
 		margin: 0;

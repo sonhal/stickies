@@ -235,3 +235,56 @@ export function walkOrderOf(m: MatrixConfig): QuadrantKey[] {
 export function quadrantsOf(m: MatrixConfig): Record<QuadrantKey, { name: string; hint: string }> {
 	return { ...DEFAULT_QUADRANTS, ...(m.quadrants ?? {}) };
 }
+
+// ---- Position inside a quadrant ------------------------------------------------------------------
+
+/** One cell of the grid inside a quadrant: 1-based CSS grid row/column, and the items in it. */
+export interface QuadrantCell {
+	row: number;
+	col: number;
+	items: Placed[];
+}
+
+/**
+ * Buckets for one axis inside one quadrant: each distinct score gets its own position, lowest first.
+ * More than `max` distinct scores (e.g. weights 3, 4, 5, 8, 13) are merged into `max` equal ranges,
+ * so a numeric axis can't spread a quadrant over a dozen thin columns.
+ */
+export function scoreBuckets(scores: number[], max = 4): (score: number) => number {
+	const distinct = [...new Set(scores)].sort((a, b) => a - b);
+	if (distinct.length <= max) return (s) => Math.max(0, distinct.indexOf(s));
+	const lo = distinct[0];
+	const span = distinct[distinct.length - 1] - lo || 1;
+	return (s) => Math.min(max - 1, Math.floor(((s - lo) / span) * max));
+}
+
+/**
+ * Lay a quadrant's items out on a grid by their axis scores: higher x further right, higher y
+ * further up (both flipped when the axis is inverted, matching the quadrants themselves). Only
+ * positions that have items get a row/column, so empty space doesn't eat the quadrant. Items in a
+ * cell keep the quadrant's order (most important, then most urgent, then oldest).
+ */
+export function quadrantCells(
+	placed: Placed[],
+	opts: { invertX?: boolean; invertY?: boolean; maxBuckets?: number } = {}
+): { cols: number; rows: number; cells: QuadrantCell[] } {
+	if (placed.length === 0) return { cols: 0, rows: 0, cells: [] };
+	const max = opts.maxBuckets ?? 4;
+	const xb = scoreBuckets(placed.map((p) => p.x), max);
+	const yb = scoreBuckets(placed.map((p) => p.y), max);
+	// Only buckets in use become grid lines, in order
+	const usedX = [...new Set(placed.map((p) => xb(p.x)))].sort((a, b) => a - b);
+	const usedY = [...new Set(placed.map((p) => yb(p.y)))].sort((a, b) => a - b);
+	if (opts.invertX) usedX.reverse();
+	if (!opts.invertY) usedY.reverse(); // highest y on the top row
+	const byCell = new Map<string, QuadrantCell>();
+	for (const p of placed) {
+		const col = usedX.indexOf(xb(p.x)) + 1;
+		const row = usedY.indexOf(yb(p.y)) + 1;
+		const k = `${row}:${col}`;
+		if (!byCell.has(k)) byCell.set(k, { row, col, items: [] });
+		byCell.get(k)!.items.push(p);
+	}
+	const cells = [...byCell.values()].sort((a, b) => a.row - b.row || a.col - b.col);
+	return { cols: usedX.length, rows: usedY.length, cells };
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { registry, selectField, item, opt, num, date } from '$lib/testing/factory';
-import { groupByQuadrant, halfCut, placeItems, resolveAxis, screenLayout } from './matrix';
+import { groupByQuadrant, halfCut, placeItems, quadrantCells, resolveAxis, screenLayout } from './matrix';
 import type { RankContext } from './rank';
 import type { AxisConfig } from './types';
 import type { FieldDef } from '$lib/fields/types';
@@ -130,5 +130,42 @@ describe('placement', () => {
 		]);
 		const xi = { ...x, config: { ...x.config, invert: true } };
 		expect(screenLayout(xi, y).cells[0]).toEqual(['highHigh', 'lowHigh']);
+	});
+});
+
+describe('quadrantCells: position inside a quadrant (higher x right, higher y up)', () => {
+	const P = (x: number, y: number, id = `${x}-${y}-${Math.random()}`) =>
+		({ item: { id, iid: 1 } as never, x, y, quadrant: 'highHigh' as const });
+
+	it('puts higher x to the right and higher y on top, using only positions with items', () => {
+		const a = P(1, 1, 'a'), b = P(2, 1, 'b'), c = P(1, 3, 'c'), d = P(1, 3, 'd');
+		const g = quadrantCells([a, b, c, d]);
+		expect(g.cols).toBe(2);
+		expect(g.rows).toBe(2); // y = 1 and 3; nothing at 2, so no empty row
+		const at = (id: string) => g.cells.find((cell) => cell.items.some((p) => p.item.id === id))!;
+		expect([at('c').row, at('c').col]).toEqual([1, 1]); // high y → top
+		expect([at('a').row, at('a').col]).toEqual([2, 1]);
+		expect([at('b').row, at('b').col]).toEqual([2, 2]); // high x → right
+		expect(at('c').items.map((p) => p.item.id)).toEqual(['c', 'd']); // same values stack, order kept
+	});
+
+	it('flips with inverted axes', () => {
+		const g = quadrantCells([P(1, 1, 'lo'), P(2, 2, 'hi')], { invertX: true, invertY: true });
+		const hi = g.cells.find((c) => c.items[0].item.id === 'hi')!;
+		expect([hi.row, hi.col]).toEqual([2, 1]); // high y at the bottom, high x on the left
+	});
+
+	it('merges many distinct numeric values into at most 4 columns, keeping order', () => {
+		const xs = [3, 4, 5, 8, 13, 21];
+		const g = quadrantCells(xs.map((x) => P(x, 1, `w${x}`)));
+		expect(g.cols).toBeLessThanOrEqual(4);
+		const col = (x: number) => g.cells.find((c) => c.items.some((p) => p.item.id === `w${x}`))!.col;
+		for (let i = 1; i < xs.length; i++) expect(col(xs[i])).toBeGreaterThanOrEqual(col(xs[i - 1]));
+		expect(col(21)).toBeGreaterThan(col(3));
+	});
+
+	it('handles an empty quadrant and a single item', () => {
+		expect(quadrantCells([])).toEqual({ cols: 0, rows: 0, cells: [] });
+		expect(quadrantCells([P(5, 5)]).cells[0]).toMatchObject({ row: 1, col: 1 });
 	});
 });

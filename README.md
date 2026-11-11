@@ -70,6 +70,9 @@ node scripts/fake-gitlab.mjs &                     # http://localhost:4010
 . scripts/dev-env.sh && npm run dev                # board on http://localhost:5173, signs in with no password
 ```
 
+`FAKE_GITLAB_EXTRA=60 node scripts/fake-gitlab.mjs` adds 60 generic issues (spread over every priority,
+effort, weight and status), to see how views and matrices look with real volume.
+
 ## Environment variables
 
 | Variable | Default | |
@@ -231,6 +234,13 @@ returns to the config). There's no Display menu: the tool's config decides the l
 [`src/lib/prioritization/types.ts`](src/lib/prioritization/types.ts) and a definition to `TOOL_TYPES` in
 [`tools.ts`](src/lib/prioritization/tools.ts). A 2×2 type only needs `toMatrix()`; a type drawn differently
 gets its own `renderer` value and component in `ToolPage.svelte`. Nothing in views changes.
+
+**How a 2×2 is drawn.** Each issue is a one-line card: epic color bar, title, status dot (plus the status
+name when the card is wide enough; the full title and both axis values are in the tooltip). Inside each
+quadrant, cards sit on a grid by their axis values: higher x further right, higher y further up (flipped
+for an inverted axis). Only positions that have issues get a row or column; a numeric axis with more than
+4 distinct values in a quadrant is merged into 4 ranges. About 12 cards fit per column on a 900 px tall
+screen before a quadrant scrolls.
 
 **Older matrix views.** Views used to have a Matrix layout. A personal view or share link that still has it
 opens as a list with a notice pointing to Prioritization; saving the view clears the notice.
