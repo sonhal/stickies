@@ -15,8 +15,10 @@
 		viewer: Viewer;
 		kioskViews: string[] | null;
 		onnavigate?: () => void;
+		/** Hide the sidebar completely (desktop); a tab on the left edge brings it back */
+		oncollapse?: () => void;
 	}
-	let { viewer, kioskViews, onnavigate }: Props = $props();
+	let { viewer, kioskViews, onnavigate, oncollapse }: Props = $props();
 	const board = getBoard();
 	const ui = getUi();
 	const views = getViews();
@@ -48,6 +50,9 @@
 		<span class="logo" aria-hidden="true">◧</span>
 		<span class="name">{settings.title}</span>
 		<span class="group" title={board.data.groupLabel}>{board.data.groupLabel}</span>
+		{#if oncollapse}
+			<button type="button" class="collapse" onclick={oncollapse} aria-label="Hide sidebar" title="Hide sidebar ([)">«</button>
+		{/if}
 	</div>
 
 	<button type="button" class="palette" onclick={() => (ui.paletteOpen = true)}>
@@ -198,6 +203,32 @@
 		gap: 8px;
 		padding: 2px 8px 8px;
 		min-width: 0;
+	}
+	.collapse {
+		margin-left: auto;
+		align-self: center;
+		flex: none;
+		width: 24px;
+		height: 24px;
+		padding: 0;
+		border: 0;
+		border-radius: 6px;
+		background: transparent;
+		color: var(--text-muted);
+		font-size: 15px;
+		line-height: 1;
+		cursor: pointer;
+	}
+	.collapse:hover,
+	.collapse:focus-visible {
+		background: var(--surface-2);
+		color: var(--text-primary);
+	}
+	/* On narrow screens the sidebar is a slide-in menu with its own close (the scrim) */
+	@media (max-width: 800px) {
+		.collapse {
+			display: none;
+		}
 	}
 	.logo {
 		color: var(--accent);

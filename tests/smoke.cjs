@@ -164,6 +164,23 @@ step('Prioritization section: both tools render, Display is hidden, views have n
 	await p.keyboard.press('Escape');
 });
 
+step('the sidebar hides completely and comes back (button, tab, [ key, remembered)', async (p) => {
+	await open(p, '/p/standup');
+	const width = () => p.$eval('main.main', (m) => m.getBoundingClientRect().width);
+	const before = await width();
+	await p.click('button[aria-label="Hide sidebar"]');
+	await p.waitForSelector('button[aria-label="Show sidebar"]');
+	if ((await width()) <= before) throw new Error('hiding the sidebar did not widen the content');
+	await p.reload();
+	await p.waitForSelector('html[data-ready]');
+	if (!(await p.locator('button[aria-label="Show sidebar"]').count())) throw new Error('hidden sidebar not remembered');
+	await p.keyboard.press('[');
+	await p.waitForSelector('button[aria-label="Hide sidebar"]');
+	await p.keyboard.press('[');
+	await p.click('button[aria-label="Show sidebar"]');
+	await p.locator('nav a[href="/v/my-issues"]').waitFor();
+});
+
 step('an old matrix share link opens as a list with a notice', async (p) => {
 	const LZ = require('lz-string');
 	const old = {

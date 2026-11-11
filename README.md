@@ -40,7 +40,7 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   "field removed" chip and is ignored.
 - **Keyboard:** `⌘/Ctrl K` command palette · `j`/`k` or `↑`/`↓` move · `Enter` open · `Esc` close ·
   `c` create · `s` status · `a` assignees · `l` labels · `w` weight · `g` then `1`–`9` go to a view ·
-  `g e` epics · on a board, `Alt`+`←`/`→` moves the focused card · in an Eisenhower matrix, `←`/`→` (or `j`/`k`) walk the board.
+  `g e` epics · `[` hide/show the sidebar (or « in its header, » on the left edge) · on a board, `Alt`+`←`/`→` moves the focused card · in an Eisenhower matrix, `←`/`→` (or `j`/`k`) walk the board.
 
 ## Run it
 

@@ -63,6 +63,18 @@
 
 	const selected = $derived(ui.selectedId ? (board.byId.get(ui.selectedId) ?? null) : null);
 	let navOpen = $state(false);
+	/** Desktop: sidebar hidden completely for more room. Remembered per browser (a convenience only). */
+	let navHidden = $state(false);
+	const NAV_KEY = 'board-nav-hidden';
+	function setNavHidden(hidden: boolean) {
+		navHidden = hidden;
+		try {
+			if (hidden) localStorage.setItem(NAV_KEY, '1');
+			else localStorage.removeItem(NAV_KEY);
+		} catch {
+			/* storage blocked: the choice just isn't remembered */
+		}
+	}
 
 	// ---- Refresh -------------------------------------------------------------------------------
 	let refreshing = $state(false);
@@ -133,6 +145,11 @@
 		now = Date.now();
 		const clock = setInterval(() => (now = Date.now()), 10_000);
 		try {
+			navHidden = localStorage.getItem(NAV_KEY) === '1';
+		} catch {
+			/* storage blocked */
+		}
+		try {
 			const saved = localStorage.getItem('board-theme');
 			if (saved === 'light' || saved === 'dark') {
 				theme = saved;
@@ -157,6 +174,12 @@
 		if (e.defaultPrevented || isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
 		if ((e.target as HTMLElement | null)?.closest('[role="dialog"]')) return;
 		if (ui.paletteOpen || ui.createOpen) return;
+
+		if (e.key === '[') {
+			e.preventDefault();
+			setNavHidden(!navHidden);
+			return;
+		}
 
 		if (gPending) {
 			gPending = false;
@@ -266,10 +289,18 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div class="shell" class:with-panel={showPanel && ui.layout !== 'matrix'} class:nav-open={navOpen}>
-	<div class="nav">
-		<Sidebar viewer={data.viewer} kioskViews={kioskViews?.map((v) => v.id) ?? null} onnavigate={() => (navOpen = false)} />
+<div class="shell" class:with-panel={showPanel && ui.layout !== 'matrix'} class:nav-open={navOpen} class:nav-hidden={navHidden}>
+	<div class="nav" inert={navHidden && !navOpen ? true : undefined}>
+		<Sidebar
+			viewer={data.viewer}
+			kioskViews={kioskViews?.map((v) => v.id) ?? null}
+			onnavigate={() => (navOpen = false)}
+			oncollapse={() => setNavHidden(true)}
+		/>
 	</div>
+	{#if navHidden}
+		<button type="button" class="nav-tab" onclick={() => setNavHidden(false)} aria-label="Show sidebar" title="Show sidebar ([)">»</button>
+	{/if}
 	{#if navOpen}<button class="scrim" aria-label="Close navigation" onclick={() => (navOpen = false)}></button>{/if}
 
 	<main class="main">
@@ -349,6 +380,42 @@
 	}
 	.shell.with-panel {
 		grid-template-columns: 236px minmax(0, 1fr) minmax(360px, 30vw);
+	}
+	/* Sidebar hidden: the content takes the full width */
+	.shell.nav-hidden {
+		grid-template-columns: 0 minmax(0, 1fr);
+	}
+	.shell.nav-hidden.with-panel {
+		grid-template-columns: 0 minmax(0, 1fr) minmax(360px, 30vw);
+	}
+	.nav-hidden .nav {
+		visibility: hidden;
+		overflow: hidden;
+	}
+	/* Small tab on the left edge to bring the sidebar back; floats, takes no layout space */
+	.nav-tab {
+		position: fixed;
+		top: 10px;
+		left: 0;
+		z-index: 20;
+		width: 20px;
+		height: 32px;
+		padding: 0;
+		border: 1px solid var(--border);
+		border-left: 0;
+		border-radius: 0 6px 6px 0;
+		background: var(--surface-1);
+		color: var(--text-muted);
+		font-size: 13px;
+		line-height: 1;
+		cursor: pointer;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+	}
+	.nav-tab:hover,
+	.nav-tab:focus-visible {
+		width: 26px;
+		color: var(--text-primary);
+		background: var(--surface-2);
 	}
 	.nav {
 		min-height: 0;
@@ -443,6 +510,9 @@
 		.shell.with-panel {
 			grid-template-columns: 236px minmax(0, 1fr);
 		}
+		.shell.nav-hidden.with-panel {
+			grid-template-columns: 0 minmax(0, 1fr);
+		}
 		.detail {
 			position: fixed;
 			top: 0;
@@ -455,8 +525,17 @@
 	}
 	@media (max-width: 800px) {
 		.shell,
-		.shell.with-panel {
+		.shell.with-panel,
+		.shell.nav-hidden,
+		.shell.nav-hidden.with-panel {
 			grid-template-columns: minmax(0, 1fr);
+		}
+		/* Narrow screens keep the slide-in menu (☰); the desktop hide/show doesn't apply */
+		.nav-hidden .nav {
+			visibility: visible;
+		}
+		.nav-tab {
+			display: none;
 		}
 		.nav {
 			position: fixed;
