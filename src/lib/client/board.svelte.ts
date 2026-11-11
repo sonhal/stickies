@@ -18,6 +18,13 @@ export class BoardState {
 	items = $state<WorkItem[]>([]);
 	/** Items with a write in flight (drawn dimmed) */
 	pending = new SvelteSet<string>();
+	/** In-flight writes per item: `pending` only clears when the last one finishes */
+	private inflight = new Map<string, number>();
+	/** Latest write started per item+field, with its value (review M3: out-of-order responses) */
+	private latest = new Map<string, { seq: number; id: string; key: WriteField; value: WriteValue }>();
+	private seq = 0;
+	/** The item as GitLab last confirmed it (load, refresh or a successful write): rollback target */
+	private confirmed = new Map<string, WorkItem>();
 
 	reg: FieldRegistry = $derived(this.data.registry);
 	byId: Map<string, WorkItem> = $derived(new Map(this.items.map((i) => [i.id, i])));
@@ -40,6 +47,7 @@ export class BoardState {
 
 	setData(data: BoardData) {
 		this.data = data;
+		for (const i of data.items) if (!this.pending.has(i.id)) this.confirmed.set(i.id, i);
 		// Keep optimistic values for items with a write still in flight.
 		const items = this.pending.size ? data.items.map((i) => (this.pending.has(i.id) ? (this.byId.get(i.id) ?? i) : i)) : data.items;
 		this.items = withEpics(items, data.registry);
@@ -55,16 +63,29 @@ export class BoardState {
 	/**
 	 * Optimistic write: show the change at once, send { itemId, field, value } to the server,
 	 * then take the server's item. On failure, roll back just this field and show a toast.
+	 *
+	 * Responses can arrive out of order (review M3). Each write gets a sequence number per
+	 * item+field, and a response only touches the screen if its write is still the latest for that
+	 * field: a slow failure can't undo a newer success, and a late success can't overwrite a newer
+	 * value. Newer writes to other fields of the same item are re-applied on top of a response.
 	 */
 	async update(id: string, key: WriteField, value: WriteValue): Promise<boolean> {
 		const before = this.byId.get(id);
 		if (!before) return false;
 		const field = key === 'title' ? null : (this.fieldsByKey.get(key) ?? null);
+		const slot = `${id}\u0000${key}`;
+		const mySeq = ++this.seq;
+		this.latest.set(slot, { seq: mySeq, id, key, value });
+		if (!this.confirmed.has(id)) this.confirmed.set(id, before);
 		this.replace(applyWrite(before, field, key, value));
-		this.pending.add(id);
+		this.begin(id);
+		const isLatest = () => this.latest.get(slot)?.seq === mySeq;
 		const rollback = () => {
+			if (!isLatest()) return; // a newer write to this field decides what's shown
+			this.latest.delete(slot);
 			const now = this.byId.get(id);
-			if (now) this.replace(applyWrite(now, field, key, currentWriteValue(before, key)));
+			const base = this.confirmed.get(id) ?? before;
+			if (now) this.replace(applyWrite(now, field, key, currentWriteValue(base, key)));
 		};
 		try {
 			const res = await fetch('/api/items/update', {
@@ -79,15 +100,41 @@ export class BoardState {
 				return false;
 			}
 			this.ownWrites.set(id, body.item.updatedAt);
-			this.replace(body.item);
+			this.confirmed.set(id, body.item);
+			if (isLatest()) {
+				this.latest.delete(slot);
+				this.replace(this.withNewerWrites(body.item, mySeq));
+			}
 			return true;
 		} catch {
 			rollback();
 			this.notify("Couldn't reach the board server. Your change was undone.", 'error');
 			return false;
 		} finally {
-			this.pending.delete(id);
+			this.end(id);
 		}
+	}
+
+	/** Re-apply writes to this item that started after `seq` (still in flight or not yet confirmed). */
+	private withNewerWrites(item: WorkItem, seq: number): WorkItem {
+		let out = item;
+		for (const w of this.latest.values()) {
+			if (w.id !== item.id || w.seq <= seq) continue;
+			out = applyWrite(out, w.key === 'title' ? null : (this.fieldsByKey.get(w.key) ?? null), w.key, w.value);
+		}
+		return out;
+	}
+
+	private begin(id: string) {
+		this.inflight.set(id, (this.inflight.get(id) ?? 0) + 1);
+		this.pending.add(id);
+	}
+
+	private end(id: string) {
+		const n = (this.inflight.get(id) ?? 1) - 1;
+		if (n > 0) return void this.inflight.set(id, n);
+		this.inflight.delete(id);
+		this.pending.delete(id);
 	}
 
 	async create(input: {

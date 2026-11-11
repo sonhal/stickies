@@ -8,7 +8,7 @@ import { serverConfig } from '../config';
 import type { Session } from '../session';
 import { credentialFor, GitLabError, graphql } from '../gitlab/client';
 import { capabilitiesFor, loadBoard, updateCachedItem } from '../gitlab/load';
-import { friendlyMutationError } from '../gitlab/mutations';
+import { mutationOutcome } from '../gitlab/mutations';
 import type { RawWorkItem } from '../gitlab/normalize';
 import { createWorkItemMutation, updateWorkItemMutation } from '../gitlab/queries';
 import { planCreate, planUpdate } from './validate';
@@ -27,14 +27,13 @@ async function run(session: Session, kind: 'update' | 'create', input: Record<st
 	const caps = await capabilitiesFor(session);
 	const doc = kind === 'update' ? updateWorkItemMutation(caps) : createWorkItemMutation(caps);
 	try {
-		const { data } = await graphql<Record<string, Payload | null>>(cfg, credentialFor(session, cfg), doc, { input });
-		const payload = data[kind === 'update' ? 'workItemUpdate' : 'workItemCreate'];
-		const errors = (payload?.errors ?? []).filter(Boolean);
-		if (errors.length || !payload?.workItem) {
-			console.warn(`[write] ${kind} rejected by GitLab:`, errors.join(' | ') || 'no work item returned');
-			return reply({ ok: false, error: friendlyMutationError(errors.length ? errors : ['no work item returned']) }, 422);
+		const { data, errors: topLevel } = await graphql<Record<string, Payload | null>>(cfg, credentialFor(session, cfg), doc, { input });
+		const outcome = mutationOutcome(data[kind === 'update' ? 'workItemUpdate' : 'workItemCreate'], topLevel);
+		if (!outcome.ok) {
+			console.warn(`[write] ${kind} rejected by GitLab:`, outcome.log);
+			return reply({ ok: false, error: outcome.error }, outcome.status);
 		}
-		const item = updateCachedItem(session, payload.workItem);
+		const item = updateCachedItem(session, outcome.workItem);
 		if (!item) return reply({ ok: false, error: 'GitLab answered, but the result could not be read.' }, 502);
 		return reply({ ok: true, item });
 	} catch (err) {

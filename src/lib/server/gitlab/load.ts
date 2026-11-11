@@ -12,13 +12,14 @@ import type { BoardData, FieldRegistry, LoadProblem, WorkItem } from '$lib/field
 import { ConfigError, serverConfig, type ServerConfig } from '../config';
 import { checkServiceToken } from '../oauth';
 import type { Session } from '../session';
-import { credentialFor, GitLabError, graphql, viewerKey, type Credential } from './client';
+import { credentialFor, GitLabError, graphql, groupLabelFor, groupPath, viewerKey, type Credential } from './client';
 import {
 	emptySeen,
 	mergeSeen,
 	normalizeSchema,
 	normalizeWorkItem,
 	type RawSchema,
+	type Conn,
 	type RawWorkItem,
 	type Seen
 } from './normalize';
@@ -27,6 +28,9 @@ import {
 	groupWorkItemsQuery,
 	parseCapabilities,
 	projectWorkItemsQuery,
+	SCHEMA_LIST_MAX,
+	SCHEMA_LISTS,
+	schemaPageQuery,
 	schemaQuery,
 	type Capabilities
 } from './queries';
@@ -76,10 +80,53 @@ export function forgetViewer(key: string) {
 	itemsCache.delete(key);
 }
 
+/**
+ * Follow a connection's cursor until it ends or `max` nodes are loaded (review M7).
+ * Returns every node, and whether the list was cut at `max`.
+ */
+export async function collectPages<T>(
+	first: Conn<T> | null | undefined,
+	nextPage: (after: string) => Promise<Conn<T> | null | undefined>,
+	max: number
+): Promise<{ nodes: (T | null)[]; capped: boolean }> {
+	const nodes: (T | null)[] = [...(first?.nodes ?? [])];
+	let info = first?.pageInfo;
+	let pages = 1;
+	while (info?.hasNextPage && info.endCursor && nodes.length < max) {
+		const page = await nextPage(info.endCursor);
+		nodes.push(...(page?.nodes ?? []));
+		info = page?.pageInfo;
+		if (++pages > 200) break; // a cursor that never ends must not loop forever
+	}
+	const capped = nodes.length > max || (!!info?.hasNextPage && nodes.length >= max);
+	return { nodes: nodes.slice(0, max), capped };
+}
+
 async function fetchSchema(cfg: ServerConfig, cred: Credential, c: Capabilities): Promise<FieldRegistry> {
 	const { data, errors } = await graphql<RawSchema>(cfg, cred, schemaQuery(c), { fullPath: cfg.group });
-	const reg = normalizeSchema(data, { iterations: c.iterations });
 	if (!data.group) throw new GitLabError('Group not found, or you cannot see it. Check GITLAB_GROUP.', 404);
+	// Lists longer than one page: fetch the rest, so nothing past the first 100 is silently missing
+	const capped: string[] = [];
+	const group = data.group as Record<string, unknown>;
+	for (const list of SCHEMA_LISTS.filter((l) => l.enabled(c))) {
+		const first = group[list.name] as Conn<unknown> | null | undefined;
+		if (!first?.pageInfo?.hasNextPage) continue;
+		const all = await collectPages(
+			first,
+			async (after) => {
+				const page = await graphql<{ group?: Record<string, Conn<unknown> | null> | null }>(cfg, cred, schemaPageQuery(list), {
+					fullPath: cfg.group,
+					after
+				});
+				return page.data.group?.[list.name];
+			},
+			SCHEMA_LIST_MAX
+		);
+		group[list.name] = { nodes: all.nodes };
+		if (all.capped) capped.push(list.label);
+	}
+	const reg = normalizeSchema(data, { iterations: c.iterations });
+	if (capped.length) reg.warnings.push(`Only the first ${SCHEMA_LIST_MAX} ${capped.join(', ')} were loaded from GitLab.`);
 	if (errors.length) reg.warnings.push('Some field information could not be loaded from GitLab (see the server log).');
 	if (!c.status) reg.warnings.push('This GitLab has no work item statuses; completed items are taken from the closed state.');
 	if (!c.customFields) reg.warnings.push('This GitLab has no custom fields API.');
@@ -173,8 +220,10 @@ function applyLabelFilter(items: WorkItem[], filter: string, seen: Seen): WorkIt
 	return items.filter((i) => keep.includes(i) || parents.has(i.id));
 }
 
-async function fetchAll(session: Session, cfg: ServerConfig, key: string, forceSchema: boolean) {
-	const cred = credentialFor(session, cfg);
+async function fetchAll(session: Session, baseCfg: ServerConfig, key: string, forceSchema: boolean) {
+	const cred = credentialFor(session, baseCfg);
+	// GraphQL needs the group's path; GITLAB_GROUP may be a numeric id (review M6)
+	const cfg = { ...baseCfg, group: await groupPath(baseCfg, cred) };
 	const c = await capabilities(cfg, cred);
 	let schema = schemaCache.get(key);
 	if (!schema || forceSchema || Date.now() - schema.at >= cfg.schemaCacheMs) {
@@ -194,7 +243,7 @@ function compose(cfg: ServerConfig, schema: SchemaEntry, items: ItemsEntry): Boa
 		fetchedAt: new Date(items.at).toISOString(),
 		stale: false,
 		problem: null,
-		groupLabel: cfg.group,
+		groupLabel: groupLabelFor(cfg),
 		closedDaysMax: cfg.closedDaysMax
 	};
 }

@@ -3,6 +3,7 @@
 	import { getUi, type CreatePrefill } from '$lib/client/ui.svelte';
 	import { appliesTo, optionById, orderedOptions } from '$lib/fields/registry';
 	import type { WriteValue } from '$lib/fields/apply';
+	import { prefillToWrite } from '$lib/query/edit';
 	import type { FieldKey } from '$lib/fields/types';
 
 	/** "Create issue", pre-filled from the current view's filters and group, like Linear. */
@@ -37,7 +38,7 @@
 	const extras = $derived(
 		Object.entries(extra).flatMap(([k, id]) => {
 			const f = board.field(k as FieldKey);
-			if (!f || !id) return [];
+			if (!f || !id || !f.editable) return [];
 			const label = f.kind === 'people' ? (board.reg.people.find((p) => p.id === id)?.name ?? id) : (optionById(f, id)?.label ?? id);
 			return [{ key: k as FieldKey, name: f.name, label, applies: appliesTo(f, type) }];
 		})
@@ -52,7 +53,11 @@
 		if (!title.trim() || !projectId || busy) return;
 		busy = true;
 		const values: Record<string, WriteValue> = {};
-		for (const x of extras) if (x.applies) values[x.key] = x.key === 'native:labels' ? [extra[x.key]!] : extra[x.key]!;
+		for (const x of extras) {
+			const f = board.field(x.key);
+			const v = f && x.applies ? prefillToWrite(f, extra[x.key]!) : null;
+			if (v !== null) values[x.key] = v;
+		}
 		if (statusId && statusOptions.length) values['native:status'] = statusId;
 		if (assignee) values['native:assignees'] = [assignee];
 		const item = await board.create({

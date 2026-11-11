@@ -72,6 +72,30 @@ step('a write GitLab rejects is rolled back with a toast', async (p) => {
 	if (after !== before) throw new Error(`title not rolled back: ${after}`);
 });
 
+step("GitLab's top-level permission error says 'no permission' (review M2)", async (p) => {
+	await p.waitForSelector('aside.detail article');
+	const before = await p.locator('aside.detail h2').textContent();
+	const res = p.waitForResponse((r) => r.url().endsWith('/api/items/update'));
+	await p.click('aside.detail h2 button');
+	await p.fill('aside.detail textarea.title-input', '[forbid] nope');
+	await p.keyboard.press('Enter');
+	if ((await res).status() !== 403) throw new Error(`expected 403, got ${(await res).status()}`);
+	await p.waitForSelector(`.toast.error:has-text("You don't have permission")`);
+	if ((await p.locator('aside.detail h2').textContent()) !== before) throw new Error('title not rolled back');
+});
+
+step('Escape in the title editor cancels without saving (review M1)', async (p) => {
+	await p.waitForSelector('aside.detail article');
+	const title = await p.locator('aside.detail h2').textContent();
+	const before = await writes();
+	await p.click('aside.detail h2 button');
+	await p.fill('aside.detail textarea.title-input', 'ESCAPED TITLE');
+	await p.keyboard.press('Escape');
+	await p.waitForTimeout(600);
+	if ((await writes()) !== before) throw new Error('Escape sent a write to GitLab');
+	if ((await p.locator('aside.detail h2').textContent()) !== title) throw new Error('title changed after Escape');
+});
+
 step('create issue (c) prefilled and opened', async (p) => {
 	const before = await writes();
 	await p.keyboard.press('Escape');

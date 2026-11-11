@@ -195,6 +195,70 @@ ${workItemFragment(c)}`;
 //   with selectOptions in the order set in GitLab
 // VERIFY(phase0): group.workItemTypes, and WorkItemWidgetDefinitionStatus.allowedStatuses on its widgetDefinitions
 // VERIFY(phase0): group.iterations needs Premium; on Free the capability probe should leave it out
+/**
+ * The group's lists the board needs for its field registry. Each is fetched page by page (review M7):
+ * the schema query asks for the first page of all of them, then `schemaPageQuery` follows the
+ * cursor of any list that has more, up to SCHEMA_LIST_MAX entries.
+ * VERIFY(phase0): customFields takes first/after and returns pageInfo like the other connections.
+ */
+export const SCHEMA_LIST_PAGE = 100;
+export const SCHEMA_LIST_MAX = 2000;
+
+export interface SchemaList {
+	/** Connection field on Group, also the key in RawSchema.group */
+	name: 'customFields' | 'projects' | 'labels' | 'milestones' | 'iterations' | 'groupMembers';
+	/** What the user sees in a "list was cut" warning */
+	label: string;
+	args: string;
+	nodes: string;
+	enabled: (c: Capabilities) => boolean;
+}
+
+export const SCHEMA_LISTS: SchemaList[] = [
+	{
+		name: 'customFields',
+		label: 'custom fields',
+		args: 'active: true',
+		nodes: 'id name fieldType active selectOptions { id value } workItemTypes { id name }',
+		enabled: (c) => c.groupCustomFields
+	},
+	{ name: 'projects', label: 'projects', args: 'includeSubgroups: true', nodes: 'id name fullPath webUrl archived', enabled: () => true },
+	{
+		name: 'labels',
+		label: 'labels',
+		args: 'includeAncestorGroups: true, includeDescendantGroups: true',
+		nodes: 'id title color',
+		enabled: () => true
+	},
+	{
+		name: 'milestones',
+		label: 'milestones',
+		args: 'includeAncestors: true, includeDescendants: true, state: active',
+		nodes: 'id title dueDate',
+		enabled: () => true
+	},
+	{
+		name: 'iterations',
+		label: 'iterations',
+		args: 'includeAncestors: true, state: opened',
+		nodes: 'id title startDate dueDate iterationCadence { id title }',
+		enabled: (c) => c.iterations
+	},
+	{
+		name: 'groupMembers',
+		label: 'group members',
+		args: 'relations: [DIRECT, INHERITED, DESCENDANTS]',
+		nodes: 'user { id username name }',
+		enabled: () => true
+	}
+];
+
+const listField = (l: SchemaList, after: boolean) =>
+	`${l.name}(${l.args}, first: ${SCHEMA_LIST_PAGE}${after ? ', after: $after' : ''}) {
+      pageInfo { hasNextPage endCursor }
+      nodes { ${l.nodes} }
+    }`;
+
 export function schemaQuery(c: Capabilities): string {
 	return /* GraphQL */ `
 query BoardSchema($fullPath: ID!) {
@@ -203,13 +267,6 @@ query BoardSchema($fullPath: ID!) {
     id
     fullPath
     name
-    ${
-			c.groupCustomFields
-				? `customFields(active: true) {
-      nodes { id name fieldType active selectOptions { id value } workItemTypes { id name } }
-    }`
-				: ''
-		}
     ${
 			c.groupWorkItemTypes
 				? `workItemTypes {
@@ -221,19 +278,19 @@ query BoardSchema($fullPath: ID!) {
     }`
 				: ''
 		}
-    projects(includeSubgroups: true, first: 100) {
-      nodes { id name fullPath webUrl archived }
-    }
-    labels(includeAncestorGroups: true, includeDescendantGroups: true, first: 100) {
-      nodes { id title color }
-    }
-    milestones(includeAncestors: true, includeDescendants: true, state: active, first: 100) {
-      nodes { id title dueDate }
-    }
-    ${c.iterations ? 'iterations(includeAncestors: true, state: opened, first: 50) { nodes { id title startDate dueDate iterationCadence { id title } } }' : ''}
-    groupMembers(relations: [DIRECT, INHERITED, DESCENDANTS], first: 100) {
-      nodes { user { id username name } }
-    }
+    ${SCHEMA_LISTS.filter((l) => l.enabled(c))
+			.map((l) => listField(l, false))
+			.join('\n    ')}
+  }
+}`;
+}
+
+/** The next page of one schema list. */
+export function schemaPageQuery(list: SchemaList): string {
+	return /* GraphQL */ `
+query BoardSchemaPage($fullPath: ID!, $after: String!) {
+  group(fullPath: $fullPath) {
+    ${listField(list, true)}
   }
 }`;
 }

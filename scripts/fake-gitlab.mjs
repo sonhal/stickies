@@ -360,6 +360,13 @@ const server = createServer(async (req, res) => {
 				}
 				case 'BoardUpdateWorkItem':
 					writes++;
+					// "[forbid]" in a title: GitLab's real no-permission shape (ResourceNotAvailable): a null
+					// payload plus a top-level error, as opposed to "[reject]" (errors inside the payload).
+					if (typeof v.input?.title === 'string' && v.input.title.includes('[forbid]'))
+						return json(res, 200, {
+							data: { workItemUpdate: null },
+							errors: [{ message: "The resource that you are attempting to access does not exist or you don't have permission to perform this action", path: ['workItemUpdate'] }]
+						});
 					return json(res, 200, { data: { workItemUpdate: applyUpdate(v.input) } });
 				case 'BoardCreateWorkItem':
 					writes++;

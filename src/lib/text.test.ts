@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { markdownToText, truncate } from './text';
+import { MARKDOWN_INPUT_MAX, markdownToText, truncate } from './text';
 
 describe('markdownToText', () => {
 	it('keeps the words and drops the syntax', () => {
@@ -45,5 +45,38 @@ describe('truncate', () => {
 	it('cuts at a word boundary', () => {
 		expect(truncate('one two three four', 12)).toEqual({ text: 'one two…', truncated: true });
 		expect(truncate('short', 12)).toEqual({ text: 'short', truncated: false });
+	});
+});
+
+describe('markdownToText stays fast on hostile input (review M5)', () => {
+	// Each of these took 12-34 s at 80-200 KB before the fix. 1 MB is GitLab's description limit.
+	const MB = 1_000_000;
+	const cases: [string, string][] = [
+		['unclosed images', '![a'.repeat(MB / 3)],
+		['unclosed links', '[a'.repeat(MB / 2)],
+		['unclosed fences', '```a\n'.repeat(MB / 5)],
+		['unclosed tags', '<a'.repeat(MB / 2)],
+		['unclosed comments', '<!--'.repeat(MB / 4)],
+		['unclosed bold', '**a'.repeat(MB / 3)],
+		['unclosed code', '`a'.repeat(MB / 2)],
+		['rule-like line', '- '.repeat(MB / 2) + 'x']
+	];
+	for (const [name, input] of cases) {
+		it(`${name}: 1 MB in well under a second`, () => {
+			const t = performance.now();
+			markdownToText(input);
+			expect(performance.now() - t).toBeLessThan(250);
+		});
+	}
+
+	it('only converts the first MARKDOWN_INPUT_MAX characters', () => {
+		const out = markdownToText('a'.repeat(MARKDOWN_INPUT_MAX) + 'TAIL');
+		expect(out.endsWith('TAIL')).toBe(false);
+	});
+
+	it('still handles normal Markdown the same way', () => {
+		expect(markdownToText('<!-- hidden -->\n```js\nconst x = 1;\n```\n**Bold** and [link](https://x) ![pic](y.png)')).toBe(
+			'const x = 1;\n\nBold and link [image: pic]'.replace('\n\n', '\n')
+		);
 	});
 });

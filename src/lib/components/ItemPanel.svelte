@@ -31,6 +31,9 @@
 		editingTitle = true;
 	}
 	function saveTitle() {
+		// Escape closes the editor first; removing the focused textarea then fires blur, which
+		// must not save (review M1). Enter also reaches here twice (submit, then blur).
+		if (!editingTitle) return;
 		editingTitle = false;
 		const t = titleDraft.trim();
 		if (t && t !== item.title) board.update(item.id, 'title', t);

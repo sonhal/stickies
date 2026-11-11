@@ -36,7 +36,7 @@ const SAMPLE = Math.max(1, Math.min(100, Number(argValue('--sample', '20')) || 2
 const SCRUB = !args.includes('--no-scrub');
 
 const GITLAB_URL = (process.env.GITLAB_URL || 'https://gitlab.com').replace(/\/+$/, '');
-const GROUP = process.env.GITLAB_GROUP || '';
+let GROUP = process.env.GITLAB_GROUP || '';
 const TOKEN = process.env.GITLAB_TOKEN || '';
 if (!GROUP || !TOKEN) {
 	console.error('Set GITLAB_GROUP and GITLAB_TOKEN (a read_api token). GITLAB_URL defaults to https://gitlab.com.');
@@ -183,6 +183,18 @@ const typeName = (t: TypeRef | null | undefined): string =>
 async function main() {
 	mkdirSync(OUT, { recursive: true });
 	say(`GitLab: ${GITLAB_URL}   group: ${GROUP}`);
+
+	// GraphQL needs the group's path; a numeric GITLAB_GROUP is resolved via REST (as the board does)
+	if (/^\d+$/.test(GROUP)) {
+		const g = await rest(`/groups/${GROUP}?with_projects=false`);
+		const path = (g.body as { full_path?: unknown } | null)?.full_path;
+		if (g.status !== 200 || typeof path !== 'string') {
+			console.error(`Group ${GROUP} not found, or this token can't see it (HTTP ${g.status}).`);
+			process.exit(1);
+		}
+		say(`Group id ${GROUP} is ${path}`);
+		GROUP = path;
+	}
 
 	// 1. Version
 	const v = await rest('/version');

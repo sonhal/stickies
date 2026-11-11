@@ -5,7 +5,7 @@
  * a missing widget or an unexpected value drops that one value, never the item or the page.
  * Shapes marked VERIFY(phase0) are listed in the README under "Things to verify against your GitLab".
  */
-import { markdownToText, truncate } from '$lib/text';
+import { MARKDOWN_INPUT_MAX, markdownToText, truncate } from '$lib/text';
 import { PARENT_NOT_LOADED } from '$lib/fields/registry';
 import {
 	type FieldDef,
@@ -26,8 +26,9 @@ export const DESCRIPTION_MAX_CHARS = 2500;
 
 // ---- Raw shapes (what we expect GitLab to send) -----------------------------------------------
 
-interface Conn<T> {
+export interface Conn<T> {
 	nodes?: (T | null)[] | null;
+	pageInfo?: { hasNextPage?: boolean | null; endCursor?: string | null } | null;
 }
 interface RawUser {
 	id: string;
@@ -327,6 +328,8 @@ export function normalizeWorkItem(raw: RawWorkItem, ctx: NormalizeContext): Work
 	values['native:updatedAt'] = { kind: 'date', value: raw.updatedAt };
 
 	const desc = truncate(markdownToText(description), DESCRIPTION_MAX_CHARS);
+	// Only the first MARKDOWN_INPUT_MAX characters are converted: say so even if the text came out short
+	if ((description?.length ?? 0) > MARKDOWN_INPUT_MAX) desc.truncated = true;
 	const iid = Number(raw.iid);
 	return {
 		id: raw.id,

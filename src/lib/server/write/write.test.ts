@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { registry, selectField, item, opt, many } from '$lib/testing/factory';
-import { planCreate, planUpdate } from './validate';
+import { neutralizeQuickActions, planCreate, planUpdate } from './validate';
 import { guardWrite, originAllowed } from './guard';
 import { RateLimiter } from './ratelimit';
+import { mutationOutcome } from '../gitlab/mutations';
+import { prefillToWrite } from '$lib/query/edit';
 import type { Session } from '../session';
 import type { FieldDef } from '$lib/fields/types';
 
@@ -114,6 +116,21 @@ describe('planCreate', () => {
 		expect(planCreate({ title: '', projectId: 'g/web' }, reg, items)).toMatchObject({ ok: false });
 		expect(planCreate({ title: 'x', projectId: 'g/web', type: 'Task', values: { 'custom:7': prio.options![0].id } }, reg, items)).toMatchObject({ ok: false });
 	});
+
+	it('escapes quick actions in the description so GitLab does not run them (review M4)', () => {
+		const description = '/move other-group/secret-project\nSome text\n  /assign @someone\n    /label ~in-a-code-block\nnot /a command';
+		const r = planCreate({ title: 'x', projectId: 'g/web', description }, reg, items);
+		expect(r.ok && r.input.description).toBe(
+			'\\/move other-group/secret-project\nSome text\n  \\/assign @someone\n    /label ~in-a-code-block\nnot /a command'
+		);
+	});
+});
+
+describe('neutralizeQuickActions', () => {
+	it('escapes every line that starts with a slash, including CRLF text, and nothing else', () => {
+		expect(neutralizeQuickActions('/clone x\r\n/spend 1h\r\nok')).toBe('\\/clone x\r\n\\/spend 1h\r\nok');
+		expect(neutralizeQuickActions('a/b\nhttps://x/y')).toBe('a/b\nhttps://x/y');
+	});
 });
 
 describe('guardWrite', () => {
@@ -158,5 +175,61 @@ describe('RateLimiter', () => {
 		expect(rl.take('a', t0 + 100)).toBe(false);
 		expect(rl.take('b', t0 + 100)).toBe(true);
 		expect(rl.take('a', t0 + 60_001)).toBe(true);
+	});
+});
+
+describe('mutationOutcome (review M2)', () => {
+	it('passes a work item through', () => {
+		expect(mutationOutcome({ workItem: { id: 'x' }, errors: [] }, [])).toEqual({ ok: true, workItem: { id: 'x' } });
+	});
+
+	it("turns GitLab's top-level ResourceNotAvailable into 'no permission' (403)", () => {
+		const r = mutationOutcome(null, [
+			"The resource that you are attempting to access does not exist or you don't have permission to perform this action"
+		]);
+		expect(r).toMatchObject({ ok: false, status: 403, error: "You don't have permission to change this in GitLab." });
+	});
+
+	it('keeps payload validation errors as 422 with their text', () => {
+		const r = mutationOutcome({ workItem: null, errors: ["Title can't be blank"] }, []);
+		expect(r).toMatchObject({ ok: false, status: 422 });
+		expect(!r.ok && r.error).toContain("Title can't be blank");
+	});
+
+	it('falls back to a fixed text when GitLab says nothing', () => {
+		expect(mutationOutcome(undefined, [])).toMatchObject({ ok: false, status: 422, error: 'GitLab rejected the change: no work item returned' });
+	});
+});
+
+describe('create prefilled from a group or filter (review M8)', () => {
+	// The dialog's prefill is always a string. These used to reach the server as strings and fail:
+	// "Weight must be a whole number of 0 or more", "Components needs a list".
+	const weight = reg.fields.find((f) => f.key === 'native:weight') ?? ({ key: 'native:weight', name: 'Weight', kind: 'number', ordered: true, editable: true, appliesTo: [] } as FieldDef);
+	const regW = registry([prio, comps, points, rating, weight]);
+	const create = (values: Record<string, unknown>) => planCreate({ title: 'New', projectId: 'g/web', values }, regW, items);
+
+	it('converts by field kind, and the server accepts the result', () => {
+		const values = {
+			'native:weight': prefillToWrite(weight, '3'),
+			'custom:10': prefillToWrite(points, '5'),
+			'custom:9': prefillToWrite(comps, comps.options![0].id),
+			'custom:7': prefillToWrite(prio, prio.options![1].id)
+		};
+		expect(values).toEqual({ 'native:weight': 3, 'custom:10': 5, 'custom:9': [comps.options![0].id], 'custom:7': prio.options![1].id });
+		const r = create(values);
+		expect(r.ok, !r.ok ? r.error : '').toBe(true);
+	});
+
+	it('the raw strings are what the server refused before', () => {
+		expect(create({ 'native:weight': '3' })).toMatchObject({ ok: false });
+		expect(create({ 'custom:9': comps.options![0].id })).toMatchObject({ ok: false });
+	});
+
+	it('drops values that cannot be set: read-only fields, non-numbers, bad dates', () => {
+		expect(prefillToWrite(rating, 'x')).toBeNull();
+		expect(prefillToWrite(points, 'abc')).toBeNull();
+		const due: FieldDef = { key: 'native:dueDate', name: 'Due date', kind: 'date', ordered: true, editable: true, appliesTo: [] };
+		expect(prefillToWrite(due, '2026-11-20')).toBe('2026-11-20');
+		expect(prefillToWrite(due, 'soon')).toBeNull();
 	});
 });

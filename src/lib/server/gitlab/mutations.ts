@@ -53,10 +53,31 @@ export function mergeWidgets(input: Input, widgets: Input): void {
 }
 
 /** GitLab mutation errors → a short message for the toast. Shown as text, never HTML. */
+const PERMISSION = /permission|not allowed|not authorized|does not exist or you don't have/i;
+
 export function friendlyMutationError(errors: string[]): string {
 	const all = errors.join(' ');
-	if (/permission|not allowed|not authorized|does not exist or you don't have/i.test(all)) {
-		return "You don't have permission to change this in GitLab.";
-	}
+	if (PERMISSION.test(all)) return "You don't have permission to change this in GitLab.";
 	return `GitLab rejected the change: ${all.slice(0, 200)}`;
+}
+
+/**
+ * Decide what a mutation response means. GitLab reports problems in two places:
+ *  - the payload's own `errors` (validation, e.g. "Title can't be blank"), with a null workItem;
+ *  - top-level GraphQL `errors` with a null payload, e.g. ResourceNotAvailable when the user
+ *    lacks permission (review M2). Those must become "no permission" (403), not a vague 422.
+ */
+export function mutationOutcome<W>(
+	payload: { workItem?: W | null; errors?: (string | null)[] | null } | null | undefined,
+	topLevelErrors: string[]
+): { ok: true; workItem: W } | { ok: false; status: 403 | 422; error: string; log: string } {
+	const own = (payload?.errors ?? []).filter((e): e is string => !!e);
+	if (!own.length && payload?.workItem) return { ok: true, workItem: payload.workItem };
+	const errors = own.length ? own : topLevelErrors.length ? topLevelErrors : ['no work item returned'];
+	return {
+		ok: false,
+		status: PERMISSION.test(errors.join(' ')) ? 403 : 422,
+		error: friendlyMutationError(errors),
+		log: errors.join(' | ')
+	};
 }

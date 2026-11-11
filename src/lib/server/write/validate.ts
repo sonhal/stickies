@@ -219,7 +219,8 @@ export function planCreate(raw: unknown, reg: FieldRegistry, items: WorkItem[]):
 	if (!type) return fail(`Unknown work item type "${typeName}"`);
 	const byId = new Map(items.map((i) => [i.id, i]));
 
-	const input: Record<string, unknown> = W.create(project.fullPath, type.id, t.title, c.description?.trim() ? c.description : undefined);
+	const description = c.description?.trim() ? neutralizeQuickActions(c.description) : undefined;
+	const input: Record<string, unknown> = W.create(project.fullPath, type.id, t.title, description);
 
 	const values: Record<string, WriteValue> = { ...(c.values ?? {}) };
 	if (c.parentId) values['native:parent'] = c.parentId;
@@ -235,3 +236,14 @@ export function planCreate(raw: unknown, reg: FieldRegistry, items: WorkItem[]):
 }
 
 export { labelScope };
+
+/**
+ * GitLab runs quick actions (`/move`, `/assign`, `/label`, `/clone` …) written at the start of a line
+ * in a new issue's description. That would let a create request do things the board's mutation
+ * allowlist forbids, such as moving the issue out of the group (review M4). Escaping the slash
+ * (`\/move`) stops GitLab from running it, and Markdown still displays it as `/move`.
+ * Lines indented 4+ spaces are code blocks, which GitLab doesn't interpret, so they're left alone.
+ */
+export function neutralizeQuickActions(text: string): string {
+	return text.replace(/^( {0,3})\//gm, '$1\\/');
+}

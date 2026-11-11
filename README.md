@@ -78,7 +78,7 @@ effort, weight and status), to see how views and matrices look with real volume.
 | Variable | Default | |
 |---|---|---|
 | `GITLAB_URL` | `https://gitlab.com` | Your GitLab (gitlab.com or self-managed). Must be https except on localhost. |
-| `GITLAB_GROUP` | (required) | Group id or full path. Team = project inside this group. |
+| `GITLAB_GROUP` | (required) | Group full path (`acme/platform`) or numeric id; an id is resolved to its path once via the REST API. Team = project inside this group. |
 | `GITLAB_OAUTH_CLIENT_ID` / `_SECRET` | | The GitLab application for user sign-in (scope **`api`**, see below). |
 | `SESSION_SECRET` | (required) | 32+ characters. Encrypts the session cookie. Changing it signs everyone out. |
 | `SESSION_MAX_AGE_DAYS` | **`1`** | How long a sign-in lasts. Short because every session holds an `api` token. |
@@ -327,6 +327,17 @@ If something differs, fix it in those three files and refresh the fixtures in
 - **Validated views** from every source (config, localStorage, URL, import) with a valibot schema and limits
   (depth, rule count, string lengths); a fuzz test throws random JSON at the parser and the query engine.
 - **On errors** the board keeps the last good data for network/5xx errors, and drops it on 401/403.
+- **No quick actions on create.** GitLab runs quick actions (`/move`, `/assign`, `/label` …) written at the
+  start of a line in a new issue's description, which would get around the board's write allowlist. The
+  server escapes them (`\/move`): the text still shows as `/move` in GitLab, but nothing runs.
+- **Bounded work per description.** Only the first 20,000 characters of a description are converted to text,
+  and every pattern in the converter is bounded, so a huge or hostile description (GitLab allows 1 MB) can't
+  stall the server for every viewer. A test feeds it 1 MB attack strings with a time limit.
+- **Permission errors are recognized** whether GitLab reports them inside the mutation result or as a
+  top-level GraphQL error (its usual "resource not available" shape): the user sees "You don't have
+  permission" and the change is undone.
+- **Edits that cross on the wire.** Each edit carries a sequence number per item and field; a late response
+  never overrides a newer edit, and a failed edit rolls back to what GitLab last confirmed.
 
 ### Running more than one replica
 

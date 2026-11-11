@@ -93,3 +93,52 @@ export async function graphql<T>(
 	if (errors.length) console.warn('[gitlab] partial GraphQL errors:', errors.join(' | '));
 	return { data: body.data, errors };
 }
+
+// ---- GITLAB_GROUP as a numeric id ----------------------------------------------------------------
+// GraphQL's group(fullPath:) only takes a path, but GITLAB_GROUP may be a numeric id (review M6).
+// The id is resolved once via REST (which accepts ids) and remembered. Only the id → path mapping
+// is shared between viewers; every query still runs with the viewer's own token, so someone who
+// can't see the group still gets "not found".
+
+const resolvedGroupPaths = new Map<string, string>();
+
+export function isNumericGroup(group: string): boolean {
+	return /^\d+$/.test(group);
+}
+
+/** The group's full path for GraphQL. A path is returned as is. */
+export async function groupPath(cfg: ServerConfig, cred: Credential): Promise<string> {
+	if (!isNumericGroup(cfg.group)) return cfg.group;
+	const known = resolvedGroupPaths.get(cfg.group);
+	if (known) return known;
+	const headers: Record<string, string> = { Accept: 'application/json' };
+	if (cred.kind === 'oauth') headers.Authorization = `Bearer ${cred.token}`;
+	else headers['PRIVATE-TOKEN'] = cred.token;
+	let res: Response;
+	try {
+		res = await fetch(`${cfg.gitlabUrl}/api/v4/groups/${cfg.group}?with_projects=false`, {
+			headers,
+			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+		});
+	} catch (err) {
+		throw new GitLabError(`Could not reach GitLab (${err instanceof Error ? err.message : String(err)})`, 0);
+	}
+	if (res.status === 401) throw new GitLabError('GitLab rejected the token.', 401);
+	if (res.status === 403 || res.status === 404) throw new GitLabError('Group not found, or you cannot see it. Check GITLAB_GROUP.', 404);
+	if (!res.ok) throw new GitLabError('GitLab returned an error.', res.status);
+	const body = (await res.json().catch(() => null)) as { full_path?: unknown } | null;
+	const path = typeof body?.full_path === 'string' ? body.full_path : '';
+	if (!/^[\w.-]+(\/[\w.-]+)*$/.test(path)) throw new GitLabError('GitLab returned an unexpected group path.', 502);
+	resolvedGroupPaths.set(cfg.group, path);
+	return path;
+}
+
+/** For display: the resolved path once known, else the configured value. */
+export function groupLabelFor(cfg: ServerConfig): string {
+	return resolvedGroupPaths.get(cfg.group) ?? cfg.group;
+}
+
+/** Test hook */
+export function _resetGroupPaths() {
+	resolvedGroupPaths.clear();
+}

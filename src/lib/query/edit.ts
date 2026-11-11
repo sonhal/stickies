@@ -1,6 +1,7 @@
 /** Pure helpers for changing a view from the UI. Every change returns a new view. */
 import { resolveField, resolveOption } from '$lib/fields/registry';
 import type { FieldDef, FieldKey, FieldRegistry } from '$lib/fields/types';
+import type { WriteValue } from '$lib/fields/apply';
 import { isGroup, type FieldRef, type FilterGroup, type FilterRule, type ViewDefinition } from './types';
 
 /** How the UI stores a field reference: by key, with the name as a fallback (see §3.2). */
@@ -74,4 +75,30 @@ export function impliedValues(view: ViewDefinition, reg: FieldRegistry): Partial
 		}
 	}
 	return out;
+}
+
+/**
+ * A prefilled create value (always a string: an option id from a group or filter) in the shape the
+ * server expects for that field (review M8): a number for number fields, a list for multi-value
+ * fields and people, the string itself for single choices, dates and text. Null for fields that
+ * can't be set on create, or a value that doesn't fit, so the dialog leaves it out.
+ */
+export function prefillToWrite(field: FieldDef, raw: string): WriteValue {
+	if (!field.editable || raw === '') return null;
+	switch (field.kind) {
+		case 'number': {
+			const n = Number(raw);
+			return Number.isFinite(n) ? n : null;
+		}
+		case 'multiSelect':
+		case 'people':
+			return [raw];
+		case 'date':
+			return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+		case 'singleSelect':
+		case 'status':
+		case 'ref':
+		case 'text':
+			return raw;
+	}
 }
