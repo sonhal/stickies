@@ -13,6 +13,8 @@ export interface CreatePrefill {
 	projectId?: string;
 	parentId?: string;
 	values?: Partial<Record<FieldKey, string>>;
+	/** Work item type name to start with, e.g. 'Epic' for "New epic". Default: Issue. */
+	type?: string;
 }
 
 let toastSeq = 0;
@@ -31,6 +33,10 @@ export class UiState {
 	createDefaults = $state<CreatePrefill>({});
 	/** Layout of the current view; the shell hides the side panel for the matrix (it has its own) */
 	layout = $state<'list' | 'board' | 'matrix'>('list');
+	/** Bumped by the `/` shortcut: the filter bar focuses its search box when this changes */
+	searchRequest = $state(0);
+	/** Bumped by the `F` shortcut: the filter bar opens its "add filter" picker when this changes */
+	filterRequest = $state(0);
 	/** Kiosk / read-only screen */
 	readOnly = $state(false);
 
