@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll, goto } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount, untrack } from 'svelte';
 	import { BoardState, setBoard } from '$lib/client/board.svelte';
@@ -16,6 +16,7 @@
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import type { Command } from '$lib/client/commands';
 	import { appliesTo, closedKind } from '$lib/fields/registry';
+	import type { BoardData } from '$lib/fields/types';
 	import type { LayoutProps } from './$types';
 
 	let { data, children }: LayoutProps = $props();
@@ -79,12 +80,30 @@
 	// ---- Refresh -------------------------------------------------------------------------------
 	let refreshing = $state(false);
 	let now = $state<number | null>(null);
+	/** The board server didn't answer the last refresh: the data on screen is kept and marked as old */
+	let offline = $state(false);
 
+	/**
+	 * Fetches the board as JSON rather than re-running the page load: if the board server is
+	 * restarting or the network drops, this is skipped and tried again on the next tick. A failed
+	 * SvelteKit navigation would swap the whole page for the browser's error screen.
+	 */
 	async function refresh() {
 		if (refreshing) return;
 		refreshing = true;
 		try {
-			await invalidateAll();
+			const res = await fetch('/api/board', { headers: { accept: 'application/json' }, cache: 'no-store' });
+			if (res.status === 401) {
+				// Session ended: a full navigation, so the sign-in page loads fresh.
+				location.assign(`/signin?returnTo=${encodeURIComponent(page.url.pathname + page.url.search)}`);
+				return;
+			}
+			const body = res.ok ? ((await res.json()) as { board?: BoardData }) : null;
+			if (!body?.board) throw new Error(`HTTP ${res.status}`);
+			board.setData(body.board);
+			offline = false;
+		} catch {
+			offline = true;
 		} finally {
 			refreshing = false;
 		}
@@ -307,7 +326,8 @@
 		<div class="topline">
 			<button type="button" class="btn ghost small menu-btn" aria-label="Open navigation" onclick={() => (navOpen = true)}>☰</button>
 			<span class="muted updated">
-				{#if data.board.fetchedAt}Updated {ago(data.board.fetchedAt, now)}{/if}
+				{#if offline}<span class="offline" role="status">Board server unreachable, retrying ·</span>{/if}
+				{#if board.data.fetchedAt}Updated {ago(board.data.fetchedAt, now)}{/if}
 			</span>
 			<button class="btn ghost small" onclick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>
 			<button class="btn ghost small" onclick={cycleTheme} title="Theme: {theme}" aria-label="Theme: {theme}">
@@ -315,34 +335,34 @@
 			</button>
 		</div>
 
-		{#if data.board.problem?.kind === 'auth'}
+		{#if board.data.problem?.kind === 'auth'}
 			<section class="notice error page-notice">
 				<h2>Please sign in again</h2>
-				<p>{data.board.problem.message}</p>
+				<p>{board.data.problem.message}</p>
 				<form method="POST" action="/auth/logout"><button class="btn">Sign in again</button></form>
 			</section>
-		{:else if data.board.problem?.kind === 'config'}
+		{:else if board.data.problem?.kind === 'config'}
 			<section class="notice error page-notice">
 				<h2>Setup needed</h2>
-				<p>{data.board.problem.message}</p>
+				<p>{board.data.problem.message}</p>
 				<p class="muted">After editing <code>.env</code>, restart the server.</p>
 			</section>
-		{:else if data.board.problem && data.board.stale}
+		{:else if board.data.problem && board.data.stale}
 			<section class="notice warn page-notice" role="status">
-				Couldn't reach GitLab ({data.board.problem.status || 'network'}): {data.board.problem.message} Showing the last data we got.
+				Couldn't reach GitLab ({board.data.problem.status || 'network'}): {board.data.problem.message} Showing the last data we got.
 			</section>
-		{:else if data.board.problem}
+		{:else if board.data.problem}
 			<section class="notice error page-notice">
 				<h2>Couldn't load issues</h2>
 				<p>
-					{#if data.board.problem.status}<code>HTTP {data.board.problem.status}</code>{/if}
-					{data.board.problem.message}
+					{#if board.data.problem.status}<code>HTTP {board.data.problem.status}</code>{/if}
+					{board.data.problem.message}
 				</p>
 				<button class="btn" onclick={refresh}>Try again</button>
 			</section>
 		{/if}
 
-		{#if !data.board.problem || data.board.stale}
+		{#if !board.data.problem || board.data.stale}
 			{@render children()}
 		{/if}
 	</main>
@@ -436,6 +456,9 @@
 	.updated {
 		font-size: 12px;
 		margin-right: 4px;
+	}
+	.offline {
+		color: var(--danger);
 	}
 	.menu-btn {
 		display: none;

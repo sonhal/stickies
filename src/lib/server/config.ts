@@ -20,6 +20,8 @@ export interface ServerConfig {
 	schemaCacheMs: number;
 	/** Closed items older than this are not fetched (the "completed issues" window cap) */
 	closedDaysMax: number;
+	/** Most open (and, separately, recently closed) items fetched per group or project. Past it, the board says so. */
+	itemsMax: number;
 	/** 'group': one group workItems query. 'projects': one query per project (fallback, see README). */
 	itemsMode: 'group' | 'projects';
 	/** Config view ids a kiosk shows, in order */
@@ -106,6 +108,7 @@ export function serverConfig(): ServerConfig {
 		sessionMaxAgeMs: (Number.isFinite(sessionDays) && sessionDays > 0 ? sessionDays : 1) * 86_400_000,
 		schemaCacheMs: num(env.SCHEMA_CACHE_SECONDS, 600) * 1000,
 		closedDaysMax: Math.min(365, num(env.CLOSED_DAYS_MAX, 30)),
+		itemsMax: Math.min(20_000, Math.floor(num(env.ITEMS_MAX, 5000, 1))),
 		itemsMode: itemsMode as 'group' | 'projects',
 		kioskViews: kioskViews.length ? kioskViews : ['standup'],
 		kioskRotateSeconds: num(env.KIOSK_ROTATE_SECONDS, 0),

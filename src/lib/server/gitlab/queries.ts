@@ -71,8 +71,33 @@ interface CapsRaw {
 	group?: { fields?: { name: string }[] | null } | null;
 }
 
+/**
+ * GitLab caches introspection: a query with `__type`/`__schema` and no `operationName` can be
+ * answered with the whole cached `__schema` instead of the aliases asked for (seen on gitlab.com).
+ * Turn that reply into the shape the probe asked for, so both answers read the same.
+ */
+function fromFullSchema(raw: unknown): CapsRaw | null {
+	const types = (raw as { __schema?: { types?: unknown } } | null)?.__schema?.types;
+	if (!Array.isArray(types)) return null;
+	const byName = new Map<string, { name: string; fields?: { name: string }[] | null }>();
+	for (const t of types) if (t && typeof t.name === 'string') byName.set(t.name, t);
+	const type = (n: string) => byName.get(n) ?? null;
+	return {
+		status: type('WorkItemWidgetStatus'),
+		statusType: type('WorkItemStatus'),
+		customFields: type('WorkItemWidgetCustomFields'),
+		selectValue: type('WorkItemSelectFieldValue'),
+		numberValue: type('WorkItemNumberFieldValue'),
+		textValue: type('WorkItemTextFieldValue'),
+		dateValue: type('WorkItemDateFieldValue'),
+		hierarchy: type('WorkItemWidgetHierarchy'),
+		iteration: type('WorkItemWidgetIteration'),
+		group: type('Group')
+	};
+}
+
 export function parseCapabilities(raw: unknown): Capabilities {
-	const r = (raw ?? {}) as CapsRaw;
+	const r = fromFullSchema(raw) ?? ((raw ?? {}) as CapsRaw);
 	const has = (list: { name: string }[] | null | undefined, n: string) => !!list?.some((f) => f.name === n);
 	return {
 		status: !!r.status,
