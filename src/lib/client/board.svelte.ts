@@ -139,7 +139,8 @@ export class BoardState {
 
 	async create(input: {
 		title: string;
-		projectId: string;
+		/** Not needed for an Epic: the server creates it in the board's group */
+		projectId?: string;
 		type?: string;
 		parentId?: string | null;
 		description?: string;
@@ -153,7 +154,8 @@ export class BoardState {
 			});
 			const body = (await res.json().catch(() => null)) as { ok: boolean; item?: WorkItem; error?: string } | null;
 			if (!res.ok || !body?.ok || !body.item) {
-				this.notify(body?.error ?? `Couldn't create the issue (HTTP ${res.status})`, 'error');
+				const what = input.type?.toLowerCase() === 'epic' ? 'epic' : 'issue';
+				this.notify(body?.error ?? `Couldn't create the ${what} (HTTP ${res.status})`, 'error');
 				return null;
 			}
 			this.ownWrites.set(body.item.id, body.item.updatedAt);

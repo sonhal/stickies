@@ -97,7 +97,8 @@ describe('planCreate', () => {
 		const r = planCreate(
 			{ title: 'New', projectId: 'g/web', parentId: epic.id, values: { 'native:status': 's-todo', 'custom:7': prio.options![0].id, 'native:labels': ['l-bug'] } },
 			reg,
-			items
+			items,
+			'g'
 		);
 		expect(r.ok && r.input).toEqual({
 			namespacePath: 'g/web',
@@ -111,18 +112,65 @@ describe('planCreate', () => {
 	});
 
 	it('refuses unknown projects, types, fields and bad titles', () => {
-		expect(planCreate({ title: 'x', projectId: 'other/project' }, reg, items)).toMatchObject({ ok: false });
-		expect(planCreate({ title: 'x', projectId: 'g/web', type: 'Incident' }, reg, items)).toMatchObject({ ok: false });
-		expect(planCreate({ title: '', projectId: 'g/web' }, reg, items)).toMatchObject({ ok: false });
-		expect(planCreate({ title: 'x', projectId: 'g/web', type: 'Task', values: { 'custom:7': prio.options![0].id } }, reg, items)).toMatchObject({ ok: false });
+		expect(planCreate({ title: 'x', projectId: 'other/project' }, reg, items, 'g')).toMatchObject({ ok: false });
+		expect(planCreate({ title: 'x', projectId: 'g/web', type: 'Incident' }, reg, items, 'g')).toMatchObject({ ok: false });
+		expect(planCreate({ title: '', projectId: 'g/web' }, reg, items, 'g')).toMatchObject({ ok: false });
+		expect(planCreate({ title: 'x', projectId: 'g/web', type: 'Task', values: { 'custom:7': prio.options![0].id } }, reg, items, 'g')).toMatchObject({ ok: false });
 	});
 
 	it('escapes quick actions in the description so GitLab does not run them (review M4)', () => {
 		const description = '/move other-group/secret-project\nSome text\n  /assign @someone\n    /label ~in-a-code-block\nnot /a command';
-		const r = planCreate({ title: 'x', projectId: 'g/web', description }, reg, items);
+		const r = planCreate({ title: 'x', projectId: 'g/web', description }, reg, items, 'g');
 		expect(r.ok && r.input.description).toBe(
 			'\\/move other-group/secret-project\nSome text\n  \\/assign @someone\n    /label ~in-a-code-block\nnot /a command'
 		);
+	});
+});
+
+describe('planCreate: epics are created in the group', () => {
+	const epic2 = item({}, { id: 'gid://gitlab/WorkItem/901', type: 'Epic' });
+	const all = [...items, epic2];
+	const create = (body: Record<string, unknown>, group = 'acme/platform') => planCreate(body, reg, all, group);
+
+	it('uses the server-side group path and needs no project', () => {
+		const r = create({ title: 'Big thing', type: 'epic', description: '/move elsewhere', values: { 'native:labels': ['l-bug'], 'native:startDate': '2026-12-01' } });
+		expect(r.ok && r.input).toEqual({
+			namespacePath: 'acme/platform',
+			workItemTypeId: 't8',
+			title: 'Big thing',
+			description: '\\/move elsewhere',
+			labelsWidget: { labelIds: ['l-bug'] },
+			startAndDueDateWidget: { startDate: '2026-12-01', isFixed: true }
+		});
+	});
+
+	it('still refuses an issue or task without a project', () => {
+		expect(create({ title: 'x' })).toMatchObject({ ok: false, error: expect.stringMatching(/projects/) });
+		expect(create({ title: 'x', type: 'Task' })).toMatchObject({ ok: false });
+	});
+
+	it('refuses fields that do not apply to an epic', () => {
+		const status = create({ title: 'x', type: 'Epic', values: { 'native:status': 's-todo' } });
+		expect(status).toMatchObject({ ok: false, error: expect.stringMatching(/doesn't apply to a Epic/) });
+		expect(create({ title: 'x', type: 'Epic', values: { 'custom:7': prio.options![0].id } })).toMatchObject({ ok: false });
+	});
+
+	it('only accepts another epic on the board as the parent', () => {
+		expect(create({ title: 'x', type: 'Epic', parentId: epic2.id })).toMatchObject({ ok: true, input: { hierarchyWidget: { parentId: epic2.id } } });
+		expect(create({ title: 'x', type: 'Epic', parentId: issue.id })).toMatchObject({ ok: false, error: expect.stringMatching(/must be an epic/) });
+		expect(create({ title: 'x', type: 'Epic', parentId: 'gid://gitlab/WorkItem/31337' })).toMatchObject({ ok: false });
+	});
+
+	it('does not let the browser choose the namespace', () => {
+		// A project sent with an epic is ignored; unknown keys such as namespacePath fail the strict schema.
+		expect(create({ title: 'x', type: 'Epic', projectId: 'g/web' })).toMatchObject({ ok: true, input: { namespacePath: 'acme/platform' } });
+		expect(create({ title: 'x', type: 'Epic', projectId: 'other/group' })).toMatchObject({ ok: true, input: { namespacePath: 'acme/platform' } });
+		expect(create({ title: 'x', type: 'Epic', namespacePath: 'other/group' })).toMatchObject({ ok: false, error: 'Invalid request' });
+		expect(create({ title: 'x', projectId: 'g/web', namespacePath: 'other/group' })).toMatchObject({ ok: false });
+	});
+
+	it('refuses an epic when the group path is not known', () => {
+		expect(create({ title: 'x', type: 'Epic' }, '')).toMatchObject({ ok: false });
 	});
 });
 
@@ -206,7 +254,7 @@ describe('create prefilled from a group or filter (review M8)', () => {
 	// "Weight must be a whole number of 0 or more", "Components needs a list".
 	const weight = reg.fields.find((f) => f.key === 'native:weight') ?? ({ key: 'native:weight', name: 'Weight', kind: 'number', ordered: true, editable: true, appliesTo: [] } as FieldDef);
 	const regW = registry([prio, comps, points, rating, weight]);
-	const create = (values: Record<string, unknown>) => planCreate({ title: 'New', projectId: 'g/web', values }, regW, items);
+	const create = (values: Record<string, unknown>) => planCreate({ title: 'New', projectId: 'g/web', values }, regW, items, 'g');
 
 	it('converts by field kind, and the server accepts the result', () => {
 		const values = {

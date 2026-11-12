@@ -31,7 +31,8 @@ const UpdateSchema = v.strictObject({ itemId: ItemId, field: FieldName, value: V
 const CreateSchema = v.strictObject({
 	title: v.string(),
 	description: v.optional(v.pipe(v.string(), v.maxLength(DESCRIPTION_MAX))),
-	projectId: v.pipe(v.string(), v.maxLength(300)),
+	// Optional here because an Epic has no project; planCreate requires it for every other type.
+	projectId: v.optional(v.pipe(v.string(), v.maxLength(300))),
 	type: v.optional(v.pipe(v.string(), v.maxLength(60))),
 	parentId: v.optional(v.nullable(ItemId)),
 	values: v.optional(v.pipe(v.record(FieldName, Value), v.check((r) => Object.keys(r).length <= 30, 'Too many values')))
@@ -206,21 +207,37 @@ export interface CreatePlan {
 	input: Record<string, unknown>;
 }
 
-export function planCreate(raw: unknown, reg: FieldRegistry, items: WorkItem[]): CreatePlan | WriteError {
+/**
+ * `groupPath` is the board's group full path, resolved by the server (never sent by the browser).
+ * An Epic is created in that group; every other type is created in one of the group's projects.
+ */
+export function planCreate(raw: unknown, reg: FieldRegistry, items: WorkItem[], groupPath: string): CreatePlan | WriteError {
 	const parsed = v.safeParse(CreateSchema, raw);
 	if (!parsed.success) return fail('Invalid request');
 	const c = parsed.output;
 	const t = checkTitle(c.title);
 	if (!t.ok) return t;
-	const project = reg.projects.find((p) => p.id === c.projectId);
-	if (!project) return fail('Pick one of the group’s projects');
 	const typeName = c.type ?? 'Issue';
 	const type = reg.types.find((x) => x.name.toLowerCase() === typeName.toLowerCase());
 	if (!type) return fail(`Unknown work item type "${typeName}"`);
+	const isEpic = type.name.toLowerCase() === 'epic';
 	const byId = new Map(items.map((i) => [i.id, i]));
 
+	let namespacePath: string;
+	if (isEpic) {
+		// A project sent along with an epic is ignored: the epic always goes to the board's group.
+		if (!groupPath) return fail('The group is not known yet. Reload the board and try again.');
+		namespacePath = groupPath;
+		// GitLab only lets an epic sit under another epic.
+		if (c.parentId && byId.get(c.parentId)?.type.toLowerCase() !== 'epic') return fail('The parent of an epic must be an epic on the board');
+	} else {
+		const project = reg.projects.find((p) => p.id === c.projectId);
+		if (!project) return fail('Pick one of the group’s projects');
+		namespacePath = project.fullPath;
+	}
+
 	const description = c.description?.trim() ? neutralizeQuickActions(c.description) : undefined;
-	const input: Record<string, unknown> = W.create(project.fullPath, type.id, t.title, description);
+	const input: Record<string, unknown> = W.create(namespacePath, type.id, t.title, description);
 
 	const values: Record<string, WriteValue> = { ...(c.values ?? {}) };
 	if (c.parentId) values['native:parent'] = c.parentId;
