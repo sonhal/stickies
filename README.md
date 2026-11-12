@@ -86,6 +86,7 @@ effort, weight and status), to see how views and matrices look with real volume.
 | `KIOSK_VIEWS` | `standup` | Comma-separated config view ids and prioritization tool ids the kiosk shows, first one first (e.g. `standup,epics`). |
 | `KIOSK_ROTATE_SECONDS` | `0` | Kiosk: switch to the next of `KIOSK_VIEWS` every N seconds. 0 = stay. |
 | `CLOSED_DAYS_MAX` | `30` | Closed items older than this aren't fetched. Caps the "Completed issues" option. |
+| `ITEMS_MAX` | `5000` | Most open items fetched (and, separately, most recently closed ones), newest-updated first. Past it the board shows a warning. Loading takes about 3 s per 100 items on first load. |
 | `CACHE_SECONDS` | `30` | Per-viewer item cache. |
 | `SCHEMA_CACHE_SECONDS` | `600` | Per-viewer field schema cache (custom fields, statuses, projects, labels…). |
 | `WRITE_RATE_PER_MINUTE` | `60` | Writes per signed-in user per minute. |

@@ -36,9 +36,8 @@ import {
 	type Capabilities
 } from './queries';
 
-const PAGE_SIZE = 50;
-/** Hard cap so a misconfigured group (e.g. the whole instance) can't hang the page. */
-const MAX_PAGES = 20;
+/** GitLab's largest page. Measured on gitlab.com: query complexity 82 of 250, about 3 s a page. */
+const PAGE_SIZE = 100;
 const CAPS_MS = 3_600_000;
 const MAX_ENTRIES = 200;
 
@@ -72,6 +71,8 @@ interface ItemsEntry {
 	at: number;
 	items: WorkItem[];
 	seen: Seen;
+	/** Shown on the board, e.g. "only the 5000 most recently updated open items were loaded" */
+	warnings: string[];
 }
 
 const schemaCache = new Map<string, SchemaEntry>();
@@ -147,7 +148,13 @@ interface ConnRoot {
 	workItems?: { pageInfo?: { hasNextPage?: boolean; endCursor?: string | null }; nodes?: RawWorkItem[] };
 }
 
-async function fetchConnection(
+/**
+ * One connection, newest-updated first, page by page. Stops at the end, at `stopBefore` (closed
+ * items older than the window), or at ITEMS_MAX, which exists so a misconfigured group (e.g. the
+ * whole instance) can't hang the page. `capped` says the list was cut there, so the board can say
+ * so instead of quietly showing part of the work.
+ */
+export async function fetchConnection(
 	cfg: ServerConfig,
 	cred: Credential,
 	query: string,
@@ -155,15 +162,17 @@ async function fetchConnection(
 	fullPath: string,
 	state: 'opened' | 'closed',
 	stopBefore: number | null
-): Promise<RawWorkItem[]> {
+): Promise<{ nodes: RawWorkItem[]; capped: boolean }> {
 	const out: RawWorkItem[] = [];
+	const max = cfg.itemsMax;
 	let after: string | null = null;
-	for (let page = 0; page < MAX_PAGES; page++) {
+	// The page count is bounded too: a cursor that never ends must not loop forever
+	for (let page = 0; page < Math.ceil(max / PAGE_SIZE) + 1; page++) {
 		const res: { data: Record<string, ConnRoot | null> } = await graphql<Record<string, ConnRoot | null>>(cfg, cred, query, {
 			fullPath,
 			state,
 			after,
-			first: PAGE_SIZE
+			first: Math.min(PAGE_SIZE, max - out.length)
 		});
 		const conn: ConnRoot['workItems'] = res.data[root]?.workItems;
 		const nodes = (conn?.nodes ?? []).filter(Boolean);
@@ -172,9 +181,10 @@ async function fetchConnection(
 		// Sorted by updatedAt desc: once we're past the window, the rest is older.
 		if (stopBefore !== null && last && Date.parse(last.updatedAt) < stopBefore) break;
 		if (!conn?.pageInfo?.hasNextPage || !conn.pageInfo.endCursor) break;
+		if (out.length >= max) return { nodes: out, capped: true };
 		after = conn.pageInfo.endCursor;
 	}
-	return out;
+	return { nodes: out, capped: false };
 }
 
 async function fetchItems(
@@ -185,18 +195,22 @@ async function fetchItems(
 ): Promise<ItemsEntry> {
 	const cutoff = Date.now() - cfg.closedDaysMax * 86_400_000;
 	const raw: RawWorkItem[] = [];
+	const cut = { opened: false, closed: false };
+	const add = async (query: string, root: 'group' | 'project', path: string, state: 'opened' | 'closed') => {
+		const r = await fetchConnection(cfg, cred, query, root, path, state, state === 'closed' ? cutoff : null);
+		raw.push(...r.nodes);
+		if (r.capped) cut[state] = true;
+	};
+	const gq = groupWorkItemsQuery(c);
+	await add(gq, 'group', cfg.group, 'opened');
 	if (cfg.itemsMode === 'group') {
-		const q = groupWorkItemsQuery(c);
-		raw.push(...(await fetchConnection(cfg, cred, q, 'group', cfg.group, 'opened', null)));
-		if (cfg.closedDaysMax > 0) raw.push(...(await fetchConnection(cfg, cred, q, 'group', cfg.group, 'closed', cutoff)));
+		if (cfg.closedDaysMax > 0) await add(gq, 'group', cfg.group, 'closed');
 	} else {
 		// Fallback: epics from the group, issues/tasks from each project.
-		const gq = groupWorkItemsQuery(c);
 		const pq = projectWorkItemsQuery(c);
-		raw.push(...(await fetchConnection(cfg, cred, gq, 'group', cfg.group, 'opened', null)));
 		for (const p of reg.projects) {
-			raw.push(...(await fetchConnection(cfg, cred, pq, 'project', p.fullPath, 'opened', null)));
-			if (cfg.closedDaysMax > 0) raw.push(...(await fetchConnection(cfg, cred, pq, 'project', p.fullPath, 'closed', cutoff)));
+			await add(pq, 'project', p.fullPath, 'opened');
+			if (cfg.closedDaysMax > 0) await add(pq, 'project', p.fullPath, 'closed');
 		}
 	}
 
@@ -211,7 +225,14 @@ async function fetchItems(
 	}
 	let items = [...byId.values()];
 	if (cfg.labelFilter) items = applyLabelFilter(items, cfg.labelFilter, seen);
-	return { at: Date.now(), items, seen };
+	const where = cfg.itemsMode === 'group' ? '' : ' per project';
+	const warnings = (['opened', 'closed'] as const)
+		.filter((k) => cut[k])
+		.map(
+			(k) =>
+				`Only the ${cfg.itemsMax} most recently updated ${k === 'opened' ? 'open' : 'closed'} items${where} were loaded from GitLab; older ones are missing. Raise ITEMS_MAX or point GITLAB_GROUP at a smaller group.`
+		);
+	return { at: Date.now(), items, seen, warnings };
 }
 
 /** GITLAB_LABEL_FILTER: only items that have ALL of these labels (by title, case-insensitive). Epics are kept. */
@@ -246,7 +267,9 @@ async function fetchAll(session: Session, baseCfg: ServerConfig, key: string, fo
 }
 
 function compose(cfg: ServerConfig, schema: SchemaEntry, items: ItemsEntry): BoardData {
-	const registry = mergeSeen(schema.registry, items.seen, items.items);
+	const merged = mergeSeen(schema.registry, items.seen, items.items);
+	// A Set: the page lists warnings in a keyed {#each}, which must never see the same text twice
+	const registry = items.warnings.length ? { ...merged, warnings: [...new Set([...merged.warnings, ...items.warnings])] } : merged;
 	return {
 		items: withEpics(items.items, registry),
 		registry,

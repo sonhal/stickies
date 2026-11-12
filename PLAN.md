@@ -102,7 +102,7 @@ browser:  ViewDefinition (config file │ localStorage │ URL) ─▶ resolve f
   - the group's custom field definitions: `id, name, fieldType, active, selectOptions (ordered), workItemTypes`
   - the allowed statuses per work item type, with their category
   - projects, labels, and the current user
-- Page size about 50–100, the MAX_PAGES cap stays, and the query is split in two if GitLab's complexity limits require it.
+- Page size about 50–100, an ITEMS_MAX cap (with a visible warning) stays, and the query is split in two if GitLab's complexity limits require it.
 
 > ⚠️ The GraphQL shapes for custom fields, statuses and work-item epics changed during GitLab 17.x–18.x.
 > **Phase 0** checks them against *your* instance. All shape-specific code stays inside `normalize.ts`.
@@ -308,7 +308,7 @@ the API. The risks and what the board does about them:
 - Per-viewer item cache (30 s, as today) and a separate schema cache (about 10 min). Writes update the cache in place.
 - At 100–200 open items plus at most a month of closed ones (D6), the whole dataset is a few hundred KB of JSON. The
   board fetches it in a handful of GraphQL pages and filters everything in the browser. No server-side filtering or
-  virtualized lists are needed. The MAX_PAGES cap stays as a safety net.
+  virtualized lists are needed. The ITEMS_MAX cap stays as a safety net and warns when it cuts the list.
 - Multi-replica: the README note still applies (Redis or sticky sessions). Write rate limits would also move to Redis.
 - Optional later: GitLab webhooks to invalidate caches for near-real-time updates.
 
