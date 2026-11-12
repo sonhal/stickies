@@ -20,7 +20,15 @@ export const KIOSK_SCOPES = 'read_api';
 
 const TIMEOUT_MS = 10_000;
 
-export class OAuthError extends Error {}
+export class OAuthError extends Error {
+	constructor(
+		message: string,
+		/** GitLab couldn't be reached or is having trouble: the token itself may still be fine */
+		readonly transient = false
+	) {
+		super(message);
+	}
+}
 
 interface TokenResponse {
 	access_token: string;
@@ -60,13 +68,18 @@ async function tokenRequest(cfg: ServerConfig, body: Record<string, string>): Pr
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 	} catch (err) {
-		throw new OAuthError(`Could not reach GitLab: ${(err as Error).message}`);
+		throw new OAuthError(`Could not reach GitLab: ${(err as Error).message}`, true);
 	}
 	if (!res.ok) {
 		// The body may contain error details; log the status only, never the request (it has the secret).
-		throw new OAuthError(`GitLab token endpoint returned ${res.status}`);
+		throw new OAuthError(`GitLab token endpoint returned ${res.status}`, res.status >= 500 || res.status === 429);
 	}
-	const json = (await res.json()) as TokenResponse;
+	let json: TokenResponse;
+	try {
+		json = (await res.json()) as TokenResponse;
+	} catch {
+		throw new OAuthError('GitLab token endpoint returned something that is not JSON', true);
+	}
 	if (!json.access_token || !json.refresh_token) throw new OAuthError('GitLab returned no token');
 	assertScope(json.scope, SCOPES);
 	return json;
@@ -187,10 +200,18 @@ export function refreshSession(
 				refreshToken: t.refresh_token,
 				expiresAt: expiry(t)
 			}))
-			.finally(() => {
-				// Keep the result briefly so requests that arrive just after can reuse it.
-				setTimeout(() => refreshing.delete(key), 30_000).unref?.();
-			});
+			.then(
+				(next) => {
+					// Keep the result briefly so requests that arrive just after can reuse it.
+					setTimeout(() => refreshing.delete(key), 30_000).unref?.();
+					return next;
+				},
+				(err) => {
+					// A failure isn't kept: the next request tries again (GitLab may just have been slow).
+					refreshing.delete(key);
+					throw err;
+				}
+			);
 		refreshing.set(key, p);
 	}
 	return p;

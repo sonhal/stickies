@@ -32,6 +32,30 @@ describe('capabilities', () => {
 		expect(c.status && c.statusCategory && c.customFields && c.rolledUpCounts && c.groupCustomFields).toBe(true);
 		expect(c.dateValue).toBe(false);
 	});
+	it("reads GitLab's cached full __schema reply the same way as the aliased probe", () => {
+		// gitlab.com answers a `__type` query sent without operationName with the whole schema.
+		const t = (name: string, fields: string[] = []) => ({ kind: 'OBJECT', name, fields: fields.map((f) => ({ name: f })) });
+		const c = parseCapabilities({
+			__schema: {
+				queryType: { name: 'Query' },
+				types: [
+					t('WorkItemWidgetStatus'),
+					t('WorkItemStatus', ['id', 'name', 'category']),
+					t('WorkItemWidgetCustomFields'),
+					t('WorkItemSelectFieldValue'),
+					t('WorkItemNumberFieldValue'),
+					t('WorkItemTextFieldValue'),
+					t('WorkItemWidgetHierarchy', ['parent', 'rolledUpCountsByType']),
+					t('WorkItemWidgetIteration'),
+					t('Group', ['id', 'customFields', 'workItemTypes']),
+					{ kind: 'SCALAR', name: 'Date', fields: null },
+					null
+				]
+			}
+		});
+		expect(c).toEqual({ ...ALL_CAPABILITIES, dateValue: false });
+		expect(parseCapabilities({ __schema: { types: [] } }).status).toBe(false);
+	});
 	it('leaves out fragments for missing types', () => {
 		const c = parseCapabilities(caps);
 		expect(workItemFragment(c)).not.toContain('WorkItemDateFieldValue');

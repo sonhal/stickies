@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { _resetGroupPaths, groupLabelFor, groupPath, GitLabError } from './client';
 import type { ServerConfig } from '../config';
+import { _resetCaches, capabilities } from './load';
+import { ALL_CAPABILITIES } from './queries';
 
 const cfg = (group: string) => ({ gitlabUrl: 'https://gitlab.example.com', group }) as ServerConfig;
 const cred = { kind: 'oauth' as const, token: 't' };
@@ -9,6 +11,7 @@ const reply = (status: number, body: unknown) => vi.fn(async () => ({ ok: status
 afterEach(() => {
 	vi.unstubAllGlobals();
 	_resetGroupPaths();
+	_resetCaches();
 });
 
 describe('groupPath: numeric GITLAB_GROUP (review M6)', () => {
@@ -41,5 +44,19 @@ describe('groupPath: numeric GITLAB_GROUP (review M6)', () => {
 	it('refuses a strange path from GitLab instead of putting it in a query', async () => {
 		vi.stubGlobal('fetch', reply(200, { full_path: 'acme/platform") { evil }' }));
 		await expect(groupPath(cfg('7'), cred)).rejects.toBeInstanceOf(GitLabError);
+	});
+});
+
+describe('capability probe', () => {
+	it('assumes a current GitLab when the probe itself is refused (introspection off)', async () => {
+		vi.stubGlobal('fetch', reply(200, { errors: [{ message: "Field '__type' doesn't exist on type 'Query'" }] }));
+		expect(await capabilities(cfg('acme'), cred)).toEqual(ALL_CAPABILITIES);
+	});
+
+	it('still reports a rejected token or an unreachable GitLab', async () => {
+		vi.stubGlobal('fetch', reply(401, {}));
+		await expect(capabilities(cfg('acme'), cred)).rejects.toMatchObject({ status: 401 });
+		vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new Error('ECONNREFUSED'))));
+		await expect(capabilities(cfg('acme'), cred)).rejects.toMatchObject({ status: 0 });
 	});
 });

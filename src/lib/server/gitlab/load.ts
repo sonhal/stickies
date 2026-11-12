@@ -24,6 +24,7 @@ import {
 	type Seen
 } from './normalize';
 import {
+	ALL_CAPABILITIES,
 	CAPABILITIES,
 	groupWorkItemsQuery,
 	parseCapabilities,
@@ -47,8 +48,17 @@ let caps: { at: number; value: Capabilities } | null = null;
 
 export async function capabilities(cfg: ServerConfig, cred: Credential): Promise<Capabilities> {
 	if (caps && Date.now() - caps.at < CAPS_MS) return caps.value;
-	const { data } = await graphql<unknown>(cfg, cred, CAPABILITIES);
-	caps = { at: Date.now(), value: parseCapabilities(data) };
+	try {
+		const { data } = await graphql<unknown>(cfg, cred, CAPABILITIES);
+		caps = { at: Date.now(), value: parseCapabilities(data) };
+	} catch (err) {
+		// Only "GitLab refused the probe itself" (introspection switched off) is handled here: the
+		// board targets GitLab 18.x, so assume everything exists rather than not loading at all.
+		// Network, token and rate-limit errors are the caller's to report.
+		if (!(err instanceof GitLabError) || (err.status !== 422 && err.status !== 403)) throw err;
+		console.warn('[gitlab] capability probe refused; assuming a current GitLab with every optional part');
+		caps = { at: Date.now(), value: ALL_CAPABILITIES };
+	}
 	return caps.value;
 }
 
