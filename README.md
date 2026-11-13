@@ -19,7 +19,7 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
 
 - **Views** (Linear-style): filter chips built from your fields, grouping and sub-grouping, ordering,
   visible properties, sub-issues nested / flat / hidden, completed issues (All / Past day / Past week /
-  Past month / None), empty groups. Default views live in [`src/lib/views.config.ts`](src/lib/views.config.ts);
+  Past month / None), empty groups. Default views live in [`src/lib/views.config.ts`](src/lib/views.config.ts).
   Filters match all or any, and any filter can get alternatives ("Priority is High **or** due this week").
   Everyone can save their own views in their browser, share a view as a link, and export/import JSON.
 - **Layouts:** List, and Board (columns from any single-select field, status, people, parent or epic;
