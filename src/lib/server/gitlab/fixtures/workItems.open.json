@@ -6,6 +6,7 @@
         "id": "gid://gitlab/WorkItem/1001", "iid": "12", "title": "Checkout fails for EU customers", "state": "OPEN",
         "createdAt": "2026-10-01T09:00:00Z", "updatedAt": "2026-11-09T10:00:00Z", "closedAt": null,
         "webUrl": "https://gitlab.example.com/acme/platform/api/-/work_items/12", "reference": "acme/platform/api#12",
+        "userPermissions": { "deleteWorkItem": true, "updateWorkItem": true },
         "workItemType": { "id": "gid://gitlab/WorkItems::Type/1", "name": "Issue" },
         "namespace": { "id": "gid://gitlab/Namespaces::ProjectNamespace/31", "fullPath": "acme/platform/api", "name": "API" },
         "widgets": [
@@ -32,6 +33,7 @@
         "id": "gid://gitlab/WorkItem/900", "iid": "3", "title": "Payments v2", "state": "OPEN",
         "createdAt": "2026-08-01T09:00:00Z", "updatedAt": "2026-11-08T10:00:00Z", "closedAt": null,
         "webUrl": "https://gitlab.example.com/groups/acme/platform/-/epics/3", "reference": "acme/platform&3",
+        "userPermissions": { "deleteWorkItem": false, "updateWorkItem": true },
         "workItemType": { "id": "gid://gitlab/WorkItems::Type/8", "name": "Epic" },
         "namespace": { "id": "gid://gitlab/Group/9", "fullPath": "acme/platform", "name": "Platform" },
         "widgets": [

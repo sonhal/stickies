@@ -15,6 +15,8 @@
 	import CreateDialog from '$lib/components/CreateDialog.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import ShortcutSheet from '$lib/components/ShortcutSheet.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import { deleteText } from '$lib/client/deleteText';
 	import type { Command } from '$lib/client/commands';
 	import type { NavDir } from '$lib/client/boardNav';
 	import { appliesTo, closedKind } from '$lib/fields/registry';
@@ -37,6 +39,7 @@
 	ui.readOnly = data.viewer?.kind !== 'user';
 	setUi(ui);
 	board.notify = (text, kind) => ui.toast(text, kind);
+	board.onremove = (id) => ui.forget(id);
 
 	// svelte-ignore state_referenced_locally
 	const kioskIds = data.kiosk?.views ?? null;
@@ -189,7 +192,7 @@
 
 	/** A dialog, popover, palette or the shortcut sheet is up: it owns the keyboard. */
 	function overlayOpen(e: KeyboardEvent): boolean {
-		if (ui.paletteOpen || ui.createOpen || ui.shortcutsOpen) return true;
+		if (ui.paletteOpen || ui.createOpen || ui.shortcutsOpen || ui.deleteRequest) return true;
 		if ((e.target as HTMLElement | null)?.closest('[role="dialog"], dialog')) return true;
 		return !!document.querySelector('[role="dialog"], dialog[open]');
 	}
@@ -213,6 +216,12 @@
 			if (!e.altKey && !e.shiftKey && e.key.toLowerCase() === 'z' && !ui.readOnly) {
 				e.preventDefault();
 				board.undo();
+			}
+			// Mod+Backspace / Mod+Delete: only opens the confirmation, never deletes by itself.
+			if (!e.altKey && !e.shiftKey && (e.key === 'Backspace' || e.key === 'Delete') && !ui.readOnly && ui.selectedId) {
+				e.preventDefault();
+				const item = board.byId.get(ui.selectedId);
+				if (item) askDelete(item);
 			}
 			return;
 		}
@@ -340,6 +349,28 @@
 		board.update(item.id, 'native:assignees', [...ids, me]);
 	}
 
+	// ---- Delete ------------------------------------------------------------------------------------
+	/** Opens the confirmation. GitLab's permission hint decides whether to offer it at all. */
+	function askDelete(item: WorkItem) {
+		if (ui.readOnly) return;
+		if (!item.canDelete) {
+			ui.toast(`GitLab doesn't let you delete ${item.ref}. Usually only project Owners can.`);
+			return;
+		}
+		ui.deleteRequest = item.id;
+	}
+	const deleteItem = $derived(ui.deleteRequest ? (board.byId.get(ui.deleteRequest) ?? null) : null);
+	const deleteWords = $derived(deleteItem ? deleteText(deleteItem, board.items) : null);
+	let deleting = $state(false);
+	async function confirmDelete() {
+		if (!deleteItem || deleting) return;
+		deleting = true;
+		await board.remove(deleteItem.id);
+		deleting = false;
+		// Success already closed it (ui.forget); on failure the toast says why and the item stays.
+		ui.deleteRequest = null;
+	}
+
 	const hasEpicType = $derived(board.reg.types.some((t) => t.name.toLowerCase() === 'epic'));
 
 	const showPanel = $derived(!!selected && ui.panelOpen);
@@ -381,6 +412,15 @@
 			);
 			if (sel.parentId)
 				out.push({ id: 'parent:none', group: `Selected: ${short}`, label: 'Remove parent', run: () => board.update(sel.id, 'native:parent', null) });
+			if (sel.canDelete)
+				out.push({
+					id: 'delete',
+					group: `Selected: ${short}`,
+					label: `Delete ${sel.type.toLowerCase() === 'epic' ? 'epic' : 'issue'}…`,
+					hint: isMac ? '⌘ ⌫' : 'Ctrl Backspace',
+					keywords: 'delete remove destroy trash',
+					run: () => askDelete(sel)
+				});
 		}
 		(kioskViews ?? views.all).forEach((v, i) =>
 			out.push({ id: `view:${v.id}`, group: 'Views', label: v.name, hint: i < 9 ? `G ${i + 1}` : v.layout, keywords: v.description, run: () => goto(`/v/${v.id}`) })
@@ -483,6 +523,19 @@
 
 	{#if ui.shortcutsOpen}
 		<ShortcutSheet readOnly={ui.readOnly} onclose={() => (ui.shortcutsOpen = false)} />
+	{/if}
+
+	{#if deleteItem && deleteWords && !ui.readOnly}
+		<ConfirmDialog
+			heading={deleteWords.heading}
+			message={deleteWords.message}
+			note={deleteWords.note}
+			confirmLabel={deleteWords.confirmLabel}
+			busyLabel="Deleting…"
+			busy={deleting}
+			onconfirm={confirmDelete}
+			oncancel={() => (ui.deleteRequest = null)}
+		/>
 	{/if}
 
 	<div class="toasts" role="status" aria-live="polite">

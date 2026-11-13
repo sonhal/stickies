@@ -10,8 +10,9 @@
  * parts (statuses, custom fields, date custom fields, rolled-up counts, iterations) are only
  * included when the CAPABILITIES probe found them. An older GitLab gets a smaller board, not an error.
  *
- * Writes: the browser never sends GraphQL. The server only ever sends the two mutations in this
- * file, with variables built from input validated against the FieldRegistry (src/lib/server/write/).
+ * Writes: the browser never sends GraphQL. The server only ever sends the three mutations in this
+ * file (update, create, delete), with variables built from input validated against the
+ * FieldRegistry and the viewer's own items (src/lib/server/write/).
  */
 
 /** Which optional schema parts exist on this GitLab. Not viewer-specific. */
@@ -147,6 +148,7 @@ fragment BoardWorkItem on WorkItem {
   closedAt
   webUrl
   reference(full: true)
+  userPermissions { deleteWorkItem }
   workItemType { id name }
   namespace { id fullPath name }
   widgets {
@@ -367,3 +369,16 @@ mutation BoardCreateWorkItem($input: WorkItemCreateInput!) {
 }
 ${workItemFragment(c)}`;
 }
+
+/**
+ * Deletes one work item (any type, epics too). The only input is the item's global id, which the
+ * server takes from the viewer's own board, never from the browser as-is (src/lib/server/write/delete.ts).
+ * The payload has no work item to return: success is "no errors". Marked deprecated in the schema
+ * like workItemUpdate (an "experiment" since 15.1), but it is what GitLab's own UI uses.
+ */
+export const deleteWorkItemMutation = /* GraphQL */ `
+mutation BoardDeleteWorkItem($input: WorkItemDeleteInput!) {
+  workItemDelete(input: $input) {
+    errors
+  }
+}`;

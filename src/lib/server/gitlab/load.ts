@@ -374,6 +374,26 @@ export function updateCachedItem(session: Session, raw: RawWorkItem): WorkItem |
 	return item;
 }
 
+/**
+ * After a successful delete: drop the item from the viewer's cache. Its children lose their parent
+ * link in GitLab (the link rows go with the parent), so here they stay without a parent; the next
+ * fetch shows anything GitLab did beyond that. It's also forgotten as a parent, so it stops being
+ * offered as a parent option.
+ */
+export function removeCachedItem(session: Session, id: string): void {
+	const entry = itemsCache.get(viewerKey(session));
+	if (!entry) return;
+	entry.seen.parents.delete(id);
+	entry.items = entry.items
+		.filter((x) => x.id !== id)
+		.map((x) => {
+			if (x.parentId !== id) return x;
+			const values = { ...x.values };
+			delete values['native:parent'];
+			return { ...x, parentId: null, values };
+		});
+}
+
 export async function capabilitiesFor(session: Session): Promise<Capabilities> {
 	const cfg = serverConfig();
 	return capabilities(cfg, credentialFor(session, cfg));

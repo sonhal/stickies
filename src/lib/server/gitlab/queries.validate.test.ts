@@ -50,7 +50,9 @@ const SDL = /* GraphQL */ `
 		workItemType: WorkItemType!
 		namespace: Namespace
 		widgets: [WorkItemWidget!]
+		userPermissions: WorkItemPermissions!
 	}
+	type WorkItemPermissions { deleteWorkItem: Boolean! updateWorkItem: Boolean! }
 
 	interface WorkItemWidget { type: WorkItemWidgetType }
 	type WorkItemWidgetDescription implements WorkItemWidget { type: WorkItemWidgetType description: String }

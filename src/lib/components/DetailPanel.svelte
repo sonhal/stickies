@@ -16,10 +16,15 @@
 		title?: Snippet<[WorkItem]>;
 		/** Description area: gets the item and the read-only view, e.g. to wrap it with an editor */
 		description?: Snippet<[WorkItem, Snippet]>;
+		/**
+		 * Item actions drawn at the foot of the panel (e.g. Delete…). Not in the header: at 30vw the
+		 * header is already full with the reference and "Open in GitLab".
+		 */
+		actions?: Snippet<[WorkItem]>;
 		compact?: boolean;
 	}
 
-	let { item, onclose, onopen, value, title, description, compact = false }: Props = $props();
+	let { item, onclose, onopen, value, title, description, actions, compact = false }: Props = $props();
 	const board = getBoard();
 
 	/** Every field that applies to this item's type, plus any other field it has a value for. */
@@ -117,6 +122,7 @@
 		</section>
 	{/if}
 	<p class="updated muted">Updated {updatedLocally.slice(0, 16).replace('T', ' ')} UTC</p>
+	{#if actions}{@render actions(item)}{/if}
 </article>
 
 <style>
