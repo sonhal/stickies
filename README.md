@@ -12,6 +12,8 @@ issues from the board. A wall screen can run a read-only **kiosk**.
 |---|---|
 | ![Board](docs/screenshots/board-light.png) | ![Eisenhower matrix](docs/screenshots/matrix-dark.png) |
 | ![Detail panel](docs/screenshots/panel-dark.png) | ![Command palette](docs/screenshots/palette-light.png) |
+| ![Epics list](docs/screenshots/epics-light.png) | ![OR filters](docs/screenshots/filters-dark.png) |
+| ![Keyboard shortcuts](docs/screenshots/shortcuts-light.png) | ![Command palette, dark](docs/screenshots/palette-dark.png) |
 
 More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
 
@@ -19,8 +21,9 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
 
 - **Views** (Linear-style): filter chips built from your fields, grouping and sub-grouping, ordering,
   visible properties, sub-issues nested / flat / hidden, completed issues (All / Past day / Past week /
-  Past month / None), empty groups. Default views live in [`src/lib/views.config.ts`](src/lib/views.config.ts);
-  everyone can save their own views in their browser, share a view as a link, and export/import JSON.
+  Past month / None), empty groups. Default views live in [`src/lib/views.config.ts`](src/lib/views.config.ts).
+  Filters match all or any, and any filter can get alternatives ("Priority is High **or** due this week").
+  Everyone can save their own views in their browser, share a view as a link, and export/import JSON.
 - **Layouts:** List, and Board (columns from any single-select field, status, people, parent or epic;
   optional swimlanes; drag to update).
 - **Prioritization:** named tools in their own sidebar section, each an instance of a *tool type*:
@@ -29,18 +32,23 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   ordered field. Instances live in [`src/lib/prioritization.config.ts`](src/lib/prioritization.config.ts);
   see [Prioritization tools](#prioritization-tools).
 - **Editing:** status, any custom field, assignees, parent epic, title, weight, start/due date, labels
-  (scoped labels stay exclusive), milestone, iteration, and *create issue* pre-filled from the current view.
+  (scoped labels stay exclusive), milestone, iteration, and *create issue* or *create epic* (in the group) pre-filled
+  from the current view.
   Changes show at once and roll back with a message if GitLab refuses them.
 - **Teams = projects, epics with progress:** the sidebar lists projects with open work and open epics;
-  `/epics` lists epics with progress from GitLab's rolled-up counts; `/epics/<id>` shows an epic's issues
+  `/epics` lists epics with progress from GitLab's rolled-up counts, with search, filters (status, assignee,
+  label), sortable columns and grouping (status, assignee, parent epic), kept in the URL; `/epics/<id>` shows an epic's issues
   through any view.
 - **Custom fields are discovered at runtime.** No code or default config depends on a field name or option
   value. A new, renamed, reordered or removed field or option shows up after the next schema refresh
   (≤ 10 minutes). A view that refers to a field that's gone still loads: the rule shows as a struck-through
   "field removed" chip and is ignored.
-- **Keyboard:** `⌘/Ctrl K` command palette · `j`/`k` or `↑`/`↓` move · `Enter` open · `Esc` close ·
-  `c` create · `s` status · `a` assignees · `l` labels · `w` weight · `g` then `1`–`9` go to a view ·
-  `g e` epics · `[` hide/show the sidebar (or « in its header, » on the left edge) · on a board, `Alt`+`←`/`→` moves the focused card · in an Eisenhower matrix, `←`/`→` (or `j`/`k`) walk the board.
+- **Keyboard:** press `?` for the full list. `⌘/Ctrl K` command palette · `j`/`k` or `↑`/`↓` move · `Enter`/`o` open ·
+  `Esc` close · `/` search · `f` add a filter · `c` create · `s` status · `a` assignees · `i` assign to me · `l` labels ·
+  `w` weight · `⌘/Ctrl Z` undo the last change · `g` then `1`–`9`/`e`/`h` go to a view, epics, home · `[` hide/show the sidebar ·
+  on a board, `h`/`j`/`k`/`l` or arrows move between cards and columns, `Alt`+`←`/`→` (or `Shift`+`h`/`l`) moves the selected
+  card · in a 2×2 matrix, `←`/`→` (or `j`/`k`) walk the board. The list lives in
+  [`src/lib/client/shortcuts.ts`](src/lib/client/shortcuts.ts).
 
 ## Run it
 

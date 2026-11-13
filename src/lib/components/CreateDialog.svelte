@@ -6,7 +6,7 @@
 	import { prefillToWrite } from '$lib/query/edit';
 	import type { FieldKey } from '$lib/fields/types';
 
-	/** "Create issue", pre-filled from the current view's filters and group, like Linear. */
+	/** "Create issue" or "Create epic", pre-filled from the current view's filters and group, like Linear. */
 	let { prefill, onclose }: { prefill: CreatePrefill; onclose: () => void } = $props();
 	const board = getBoard();
 	const ui = getUi();
@@ -16,7 +16,9 @@
 	let title = $state('');
 	let description = $state('');
 	let projectId = $state(initial.projectId ?? board.reg.projects[0]?.id ?? '');
-	let type = $state(board.reg.types.find((t) => t.name === 'Issue')?.name ?? board.reg.types[0]?.name ?? 'Issue');
+	const typeNamed = (name: string) => board.reg.types.find((t) => t.name.toLowerCase() === name.toLowerCase())?.name;
+	// "New epic" asks for the Epic type; a type the group doesn't have falls back to Issue.
+	let type = $state((initial.type && typeNamed(initial.type)) || typeNamed('Issue') || board.reg.types[0]?.name || 'Issue');
 	let statusId = $state((initial.values?.['native:status'] as string | undefined) ?? '');
 	let assignee = $state((initial.values?.['native:assignees'] as string | undefined) ?? '');
 	let parentId = $state(initial.parentId ?? '');
@@ -30,10 +32,17 @@
 	let busy = $state(false);
 	let dialog: HTMLDialogElement | undefined = $state();
 
-	// Epics live on groups and are created in GitLab; this form makes project-level items.
-	const types = $derived(board.reg.types.filter((t) => t.name.toLowerCase() !== 'epic'));
+	// An epic lives in the group, not in a project. The server decides which group; this only shows it.
+	const isEpic = $derived(type.toLowerCase() === 'epic');
+	const noun = $derived(isEpic ? 'epic' : 'issue');
 	const statusField = $derived(board.field('native:status'));
+	const assigneeField = $derived(board.field('native:assignees'));
 	const parentField = $derived(board.field('native:parent'));
+	// GitLab only lets an epic sit under another epic.
+	const parentOptions = $derived(
+		(parentField?.options ?? []).filter((o) => !isEpic || board.byId.get(o.id)?.type.toLowerCase() === 'epic')
+	);
+	const canAssign = $derived(!!assigneeField && appliesTo(assigneeField, type));
 	const statusOptions = $derived(statusField && appliesTo(statusField, type) ? orderedOptions(statusField) : []);
 	const extras = $derived(
 		Object.entries(extra).flatMap(([k, id]) => {
@@ -48,9 +57,14 @@
 		dialog?.showModal();
 	});
 
+	/** A parent picked for an issue may not be allowed for an epic: drop it rather than send it. */
+	function typeChanged() {
+		if (parentId && !parentOptions.some((o) => o.id === parentId)) parentId = '';
+	}
+
 	async function submit(e: SubmitEvent) {
 		e.preventDefault();
-		if (!title.trim() || !projectId || busy) return;
+		if (!title.trim() || (!isEpic && !projectId) || busy) return;
 		busy = true;
 		const values: Record<string, WriteValue> = {};
 		for (const x of extras) {
@@ -59,13 +73,13 @@
 			if (v !== null) values[x.key] = v;
 		}
 		if (statusId && statusOptions.length) values['native:status'] = statusId;
-		if (assignee) values['native:assignees'] = [assignee];
+		if (assignee && canAssign) values['native:assignees'] = [assignee];
 		const item = await board.create({
 			title: title.trim(),
 			description: description.trim() || undefined,
-			projectId,
+			projectId: isEpic ? undefined : projectId,
 			type,
-			parentId: parentId || null,
+			parentId: (parentOptions.some((o) => o.id === parentId) && parentId) || null,
 			values
 		});
 		busy = false;
@@ -76,27 +90,34 @@
 	}
 </script>
 
-<dialog bind:this={dialog} class="create" aria-label="New issue" onclose={onclose} oncancel={onclose}>
+<dialog bind:this={dialog} class="create" aria-label="New {noun}" onclose={onclose} oncancel={onclose}>
 	<form onsubmit={submit}>
 		<header>
-			<h2>New issue</h2>
+			<h2>New {noun}</h2>
 			<button type="button" class="btn ghost small" aria-label="Close" onclick={onclose}>×</button>
 		</header>
 		<!-- svelte-ignore a11y_autofocus -->
-		<input class="title" bind:value={title} placeholder="Issue title" maxlength="255" required autofocus aria-label="Title" />
+		<input class="title" bind:value={title} placeholder={isEpic ? 'Epic title' : 'Issue title'} maxlength="255" required autofocus aria-label="Title" />
 		<textarea bind:value={description} placeholder="Add a description (Markdown)…" rows="4" aria-label="Description"></textarea>
 
 		<div class="grid">
-			<label
-				>Project
-				<select class="input" bind:value={projectId} required>
-					{#each board.reg.projects as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
-				</select>
-			</label>
+			{#if isEpic}
+				<label
+					>Group
+					<input class="input" value={board.data.groupLabel} readonly title="Epics are created in the board's group" />
+				</label>
+			{:else}
+				<label
+					>Project
+					<select class="input" bind:value={projectId} required>
+						{#each board.reg.projects as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
+					</select>
+				</label>
+			{/if}
 			<label
 				>Type
-				<select class="input" bind:value={type}>
-					{#each types as t (t.id)}<option value={t.name}>{t.name}</option>{/each}
+				<select class="input" bind:value={type} onchange={typeChanged}>
+					{#each board.reg.types as t (t.id)}<option value={t.name}>{t.name}</option>{/each}
 				</select>
 			</label>
 			{#if statusOptions.length}
@@ -108,19 +129,21 @@
 					</select>
 				</label>
 			{/if}
-			<label
-				>Assignee
-				<select class="input" bind:value={assignee}>
-					<option value="">Unassigned</option>
-					{#if board.reg.currentUserId}<option value={board.reg.currentUserId}>Me</option>{/if}
-					{#each board.reg.people.filter((p) => p.id !== board.reg.currentUserId) as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
-				</select>
-			</label>
+			{#if canAssign}
+				<label
+					>Assignee
+					<select class="input" bind:value={assignee}>
+						<option value="">Unassigned</option>
+						{#if board.reg.currentUserId}<option value={board.reg.currentUserId}>Me</option>{/if}
+						{#each board.reg.people.filter((p) => p.id !== board.reg.currentUserId) as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
+					</select>
+				</label>
+			{/if}
 			<label class="wide"
-				>Parent
+				>{isEpic ? 'Parent epic' : 'Parent'}
 				<select class="input" bind:value={parentId}>
 					<option value="">No parent</option>
-					{#each parentField?.options ?? [] as o (o.id)}<option value={o.id}>{o.label}</option>{/each}
+					{#each parentOptions as o (o.id)}<option value={o.id}>{o.label}</option>{/each}
 				</select>
 			</label>
 		</div>
@@ -129,7 +152,7 @@
 			<div class="extras">
 				<span class="muted">From this view:</span>
 				{#each extras as x (x.key)}
-					<span class="chip" class:off={!x.applies} title={x.applies ? '' : `${x.name} doesn't apply to a ${type}; it won't be set`}>
+					<span class="chip" class:off={!x.applies} title={x.applies ? '' : `${x.name} doesn't apply to ${isEpic ? 'an' : 'a'} ${type}; it won't be set`}>
 						{x.name}: {x.label}
 						<button type="button" aria-label="Don't set {x.name}" onclick={() => (extra = Object.fromEntries(Object.entries(extra).filter(([k]) => k !== x.key)))}>×</button>
 					</span>
@@ -140,7 +163,7 @@
 		<footer>
 			<span class="muted">Created in GitLab with your account.</span>
 			<button type="button" class="btn" onclick={onclose}>Cancel</button>
-			<button class="btn primary" disabled={busy || !title.trim() || !projectId}>{busy ? 'Creating…' : 'Create issue'}</button>
+			<button class="btn primary" disabled={busy || !title.trim() || (!isEpic && !projectId)}>{busy ? 'Creating…' : `Create ${noun}`}</button>
 		</footer>
 	</form>
 </dialog>

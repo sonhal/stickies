@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { getBoard } from '$lib/client/board.svelte';
 	import { getUi } from '$lib/client/ui.svelte';
 	import { closedKind, optionById, personName } from '$lib/fields/registry';
@@ -7,6 +8,7 @@
 	import { dropWrite } from '$lib/query/board';
 	import type { ViewDefinition } from '$lib/query/types';
 	import { slotVar } from '$lib/colors';
+	import { boardNext, locate } from '$lib/client/boardNav';
 	import StatusIcon from '../ui/StatusIcon.svelte';
 	import Avatar from '../ui/Avatar.svelte';
 	import ValueChip from '../ui/ValueChip.svelte';
@@ -41,12 +43,85 @@
 		ui.navOrder = ids;
 	});
 
+	// ---- Keyboard navigation -------------------------------------------------------------------------
+	/** Card ids as drawn: cells[lane][column], top to bottom. A board without rows is one lane. */
+	const cells = $derived(
+		(lanes ?? [null]).map((lane) => columns.map((col) => cell(col, lane).map((i) => i.id)))
+	);
+	/**
+	 * The cell the selection was last taken to. A card can be in two columns at once (a board by
+	 * labels), and this keeps j/k walking the column the user is looking at.
+	 */
+	let lastCell: { lane: number; col: number } | null = null;
+	/** Set by keyboard moves: the effect below focuses the card once it is drawn */
+	let focusNext = false;
+	/** Bumped to scroll to the selection again after it moved to another column */
+	let reveal = $state(0);
+
+	// The shell's key handler calls these instead of its linear j/k (see UiState.nav).
+	$effect(() => {
+		ui.nav = {
+			move: (dir) => {
+				const next = boardNext(cells, ui.selectedId, dir, lastCell);
+				if (!next) return;
+				lastCell = { lane: next.pos.lane, col: next.pos.col };
+				focusNext = true;
+				ui.selectedId = next.id;
+				reveal++;
+			},
+			shift: (delta) => {
+				const item = ui.selectedId ? board.byId.get(ui.selectedId) : null;
+				const at = item ? locate(cells, item.id, lastCell) : null;
+				if (!item || !at || !canDrag) return false;
+				shiftCard(item, at.col, at.lane, delta);
+				return true;
+			}
+		};
+		return () => (ui.nav = null);
+	});
+
+	// Keep the selected card in view (both ways: the board scrolls sideways) and, after a key, focused.
+	$effect(() => {
+		const id = ui.selectedId;
+		void reveal;
+		if (!id) return;
+		// After tick(): a card that just changed column is only drawn there once the board updates.
+		tick().then(() => {
+			const sel = `.board [data-item="${CSS.escape(id)}"]`;
+			const el =
+				(lastCell && document.querySelector<HTMLElement>(`${sel}[data-cell="${lastCell.lane}:${lastCell.col}"]`)) ||
+				document.querySelector<HTMLElement>(sel);
+			if (!el || ui.selectedId !== id) return;
+			el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+			if (focusNext) el.focus({ preventScroll: true });
+			focusNext = false;
+		});
+	});
+
 	// ---- Moving cards ------------------------------------------------------------------------------
 	let announce = $state('');
 	let dragging = $state<{ id: string; col: string; lane: string | null } | null>(null);
 	let over = $state<string | null>(null);
 
 	const colValue = (key: string) => (key === '__none' ? null : key);
+
+	/** Move a card one column (Alt+←/→, Shift+H/L); the selection and focus go with it. */
+	function shiftCard(item: WorkItem, colIndex: number, laneIndex: number, delta: 1 | -1) {
+		const to = columns[colIndex + delta];
+		if (!to) return;
+		const lane = lanes?.[laneIndex]?.key ?? null;
+		ui.selectedId = item.id;
+		lastCell = { lane: laneIndex, col: colIndex + delta };
+		focusNext = true;
+		move(item, columns[colIndex].key, to.key, lane, lane).then(() => {
+			// GitLab's answer can re-sort the column, and moving a card in the page drops its focus.
+			if (ui.selectedId !== item.id || (document.activeElement && document.activeElement !== document.body)) return;
+			focusNext = true;
+			reveal++;
+		});
+		// move() shows the card in its new column at once (optimistic); scroll to it there.
+		reveal++;
+	}
 
 	async function move(item: WorkItem, fromCol: string, toCol: string, fromLane: string | null, toLane: string | null) {
 		const writes = [];
@@ -87,23 +162,26 @@
 		if (item) move(item, d.col, col, d.lane, lane);
 	}
 
-	/** Keyboard alternative to drag: Alt+← / Alt+→ moves the focused card one column. */
-	function onCardKey(e: KeyboardEvent, item: WorkItem, colIndex: number, lane: string | null) {
+	/**
+	 * Keyboard alternative to drag: Alt+← / Alt+→ moves the focused card one column (the selected
+	 * card when focus is elsewhere is handled through ui.nav.shift).
+	 */
+	function onCardKey(e: KeyboardEvent, item: WorkItem, colIndex: number, laneIndex: number) {
 		if (e.key === 'Enter') {
+			lastCell = { lane: laneIndex, col: colIndex };
 			ui.open(item.id);
 			return;
 		}
-		if (!e.altKey || !canDrag || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+		if (!e.altKey || e.ctrlKey || e.metaKey || !canDrag || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
 		e.preventDefault();
 		e.stopPropagation();
-		const to = columns[colIndex + (e.key === 'ArrowRight' ? 1 : -1)];
-		if (to) move(item, columns[colIndex].key, to.key, lane, lane);
+		shiftCard(item, colIndex, laneIndex, e.key === 'ArrowRight' ? 1 : -1);
 	}
 
 	const statusOf = (g: ItemGroup) => (colField?.kind === 'status' && g.value ? optionById(colField, g.value) : null);
 </script>
 
-{#snippet card(item: WorkItem, colIndex: number, colKey: string, lane: string | null)}
+{#snippet card(item: WorkItem, colIndex: number, colKey: string, lane: string | null, laneIndex: number)}
 	{@const a = item.values['native:assignees']}
 	{@const closed = closedKind(board.reg, item)}
 	<div
@@ -117,11 +195,15 @@
 		tabindex="0"
 		aria-label="{item.ref}: {item.title}{canDrag ? '. Alt+arrow keys move it between columns.' : ''}"
 		data-item={item.id}
+		data-cell="{laneIndex}:{colIndex}"
 		style="--epic: {slotVar(board.colors.slotFor(item))}"
 		ondragstart={(e) => onDragStart(e, item, colKey, lane)}
 		ondragend={() => ((dragging = null), (over = null))}
-		onclick={() => ui.open(item.id)}
-		onkeydown={(e) => onCardKey(e, item, colIndex, lane)}
+		onclick={() => {
+			lastCell = { lane: laneIndex, col: colIndex };
+			ui.open(item.id);
+		}}
+		onkeydown={(e) => onCardKey(e, item, colIndex, laneIndex)}
 	>
 		<div class="top">
 			<span class="ref">{item.ref.replace(/^.*\//, '')}</span>
@@ -141,7 +223,7 @@
 	</div>
 {/snippet}
 
-{#snippet column(col: ItemGroup, ci: number, lane: ItemGroup | null)}
+{#snippet column(col: ItemGroup, ci: number, lane: ItemGroup | null, li: number)}
 	{@const items = cell(col, lane)}
 	{@const cellKey = `${col.key}|${lane?.key ?? ''}`}
 	<div
@@ -160,7 +242,7 @@
 		ondrop={(e) => onDrop(e, col.key, lane?.key ?? null)}
 	>
 		{#each items as item (item.id)}
-			<div role="listitem">{@render card(item, ci, col.key, lane?.key ?? null)}</div>
+			<div role="listitem">{@render card(item, ci, col.key, lane?.key ?? null, li)}</div>
 		{/each}
 	</div>
 {/snippet}
@@ -183,15 +265,15 @@
 	</div>
 
 	{#if lanes}
-		{#each lanes as lane (lane.key)}
+		{#each lanes as lane, li (lane.key)}
 			<div class="lane-head"><span>{lane.label}</span> <span class="n">{lane.items.length}</span></div>
 			<div class="row">
-				{#each columns as col, ci (col.key)}{@render column(col, ci, lane)}{/each}
+				{#each columns as col, ci (col.key)}{@render column(col, ci, lane, li)}{/each}
 			</div>
 		{/each}
 	{:else}
 		<div class="row">
-			{#each columns as col, ci (col.key)}{@render column(col, ci, null)}{/each}
+			{#each columns as col, ci (col.key)}{@render column(col, ci, null, 0)}{/each}
 		</div>
 	{/if}
 	<p class="visually-hidden" aria-live="polite">{announce}</p>
@@ -200,7 +282,7 @@
 {#if !canDrag && !ui.readOnly && colField}
 	<p class="hint muted">{colField.name} can't be changed from the board, so cards can't be dragged here.</p>
 {:else if canDrag}
-	<p class="hint muted">Drag cards between columns, or focus a card and press <kbd>Alt</kbd>+<kbd>←</kbd>/<kbd>→</kbd>.</p>
+	<p class="hint muted">Drag cards between columns, or select one and press <kbd>Alt</kbd>+<kbd>←</kbd>/<kbd>→</kbd>. <kbd>?</kbd> lists every shortcut.</p>
 {/if}
 
 <style>
@@ -298,6 +380,8 @@
 		box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
 		cursor: pointer;
 		font-size: 13.5px;
+		/* Room for the sticky column heads (and a little air below) when a key scrolls a card into view */
+		scroll-margin: 44px 0 12px;
 	}
 	.card::before {
 		content: '';

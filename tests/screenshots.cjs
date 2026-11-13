@@ -49,6 +49,17 @@ async function shoot(browser, theme) {
 	await p.keyboard.press('Escape');
 	await go('/epics');
 	await snap('epics');
+
+	// The Triage view has an OR group in its filter
+	await go('/v/triage');
+	await snap('filters');
+
+	await go('/v/active');
+	await p.keyboard.press('?');
+	await p.waitForSelector('[role="dialog"][aria-modal="true"]');
+	await p.waitForTimeout(200);
+	await snap('shortcuts');
+	await p.keyboard.press('Escape');
 	await ctx.close();
 }
 

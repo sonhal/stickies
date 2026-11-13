@@ -70,6 +70,9 @@ const PRIO = fieldsById['gid://gitlab/Issuables::CustomField/7'];
 const EFFORT = fieldsById['gid://gitlab/Issuables::CustomField/8'];
 const COMP = fieldsById['gid://gitlab/Issuables::CustomField/9'];
 
+/** The group every fake epic lives in */
+const GROUP_PATH = 'acme/platform';
+
 /** Raw items, in GitLab's shape, keyed by id */
 const items = new Map();
 let nextIid = { 'acme/platform': 10, 'acme/platform/api': 100, 'acme/platform/web': 200, 'acme/platform/data': 300 };
@@ -298,9 +301,14 @@ function applyUpdate(input) {
 function applyCreate(input) {
 	const type = typesById[input.workItemTypeId]?.name ?? 'Issue';
 	const path = input.namespacePath;
-	if (!projects[path] && type !== 'Epic') return { errors: ['Namespace not found'], workItem: null };
-	const id = makeItem({ type, path, title: input.title, desc: input.description ?? '', status: input.statusWidget?.status ?? S.todo, parent: input.hierarchyWidget?.parentId ?? null, assignees: input.assigneesWidget?.assigneeIds ?? [], labels: input.labelsWidget?.labelIds ?? [], updatedDays: 0 });
-	const res = applyUpdate({ id, customFieldsWidget: input.customFieldsWidget ?? [], milestoneWidget: input.milestoneWidget, weightWidget: input.weightWidget, iterationWidget: input.iterationWidget, startAndDueDateWidget: input.startAndDueDateWidget });
+	const isEpic = type === 'Epic';
+	// Like GitLab: an epic lives in the group, everything else in one of its projects.
+	if (isEpic ? path !== GROUP_PATH : !projects[path]) return { errors: ['Namespace not found'], workItem: null };
+	const parent = input.hierarchyWidget?.parentId ?? null;
+	if (isEpic && parent && items.get(parent)?.workItemType.name !== 'Epic') return { errors: ["Parent can't be assigned: an epic can only have an epic as its parent"], workItem: null };
+	// Epics have no status widget; makeItem builds the group namespace, `acme/platform&12` reference and epic URL.
+	const id = makeItem({ type, path, title: input.title, desc: input.description ?? '', status: isEpic ? undefined : (input.statusWidget?.status ?? S.todo), parent, assignees: input.assigneesWidget?.assigneeIds ?? [], labels: input.labelsWidget?.labelIds ?? [], updatedDays: 0 });
+	const res = applyUpdate({ id, customFieldsWidget: isEpic ? [] : (input.customFieldsWidget ?? []), milestoneWidget: input.milestoneWidget, weightWidget: input.weightWidget, iterationWidget: input.iterationWidget, startAndDueDateWidget: input.startAndDueDateWidget });
 	return res;
 }
 

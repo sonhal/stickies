@@ -63,7 +63,8 @@ export async function executeUpdate(session: Session, body: unknown) {
 export async function executeCreate(session: Session, body: unknown) {
 	const board = await loadBoard(session);
 	if (board.problem && !board.stale) return reply({ ok: false, error: board.problem.message }, 503);
-	const plan = planCreate(body, board.registry, board.items);
+	// The group path comes from the loaded board (GITLAB_GROUP resolved to a path), never from the request.
+	const plan = planCreate(body, board.registry, board.items, board.groupLabel);
 	if (!plan.ok) return reply({ ok: false, error: plan.error }, plan.status);
 	return run(session, 'create', plan.input);
 }

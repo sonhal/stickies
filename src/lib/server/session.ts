@@ -12,7 +12,10 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, createHash, ti
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 
-/** Derive a purpose-bound 256-bit key, so the same secret never encrypts two kinds of data. */
+/**
+ * Derive a purpose-bound 256-bit key, so the same secret never encrypts two kinds of data.
+ * The salt is the app's old name. It stays: changing it would sign everyone out and void kiosk links.
+ */
 export function deriveKey(secret: string, purpose: string): Buffer {
 	return Buffer.from(hkdfSync('sha256', secret, 'eisenhower-board', purpose, 32));
 }
