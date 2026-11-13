@@ -12,6 +12,8 @@ issues from the board. A wall screen can run a read-only **kiosk**.
 |---|---|
 | ![Board](docs/screenshots/board-light.png) | ![Eisenhower matrix](docs/screenshots/matrix-dark.png) |
 | ![Detail panel](docs/screenshots/panel-dark.png) | ![Command palette](docs/screenshots/palette-light.png) |
+| ![Epics list](docs/screenshots/epics-light.png) | ![OR filters](docs/screenshots/filters-dark.png) |
+| ![Keyboard shortcuts](docs/screenshots/shortcuts-light.png) | ![Command palette, dark](docs/screenshots/palette-dark.png) |
 
 More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
 
