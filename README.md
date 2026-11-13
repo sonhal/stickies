@@ -385,6 +385,12 @@ normalizer against fixtures, the write path (invalid option id, field not applic
 fields, kiosk refused, cross-origin refused, rate limit, scoped labels, parent cycles), board drops, epic
 progress, the token scope check (a sign-in token whose scope isn't exactly `api` is refused), sessions and PKCE.
 
+CI: [`.gitlab-ci.yml`](.gitlab-ci.yml) runs on every merge request and on the default branch, and
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) does the same for GitHub pull requests: `npm run check`,
+the unit tests (shown in the MR's test report on GitLab), `npm run build`, and the smoke test below in the
+`mcr.microsoft.com/playwright` image. No secrets or real GitLab needed. Run the smoke step locally as CI does with
+`npm run build && bash scripts/ci-smoke.sh` (needs the `playwright` package and Chromium).
+
 Smoke tests (Playwright, against the fake GitLab):
 
 ```sh

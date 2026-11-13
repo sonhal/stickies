@@ -1,0 +1,81 @@
+# Tests for every merge request, and for the default branch after a merge.
+#
+#   check  svelte-check (types and Svelte diagnostics)
+#   unit   vitest; results show in the merge request's test report
+#   build  production build (adapter-node), handed to the smoke job
+#   smoke  Playwright smoke test of the built board against scripts/fake-gitlab.mjs
+#
+# Nothing here talks to a real GitLab or needs secrets: the smoke test uses the fake GitLab and the
+# throwaway settings in scripts/dev-env.sh.
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # A push to a branch with an open MR already gets the MR pipeline: don't run twice
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  # Rules are evaluated per pipeline; newer pushes cancel older pipelines of the same MR
+  auto_cancel:
+    on_new_commit: interruptible
+
+stages: [verify, build, e2e]
+
+variables:
+  NODE_IMAGE: node:22-bookworm-slim
+  # Keep in step with the Playwright version the smoke test is written for
+  PLAYWRIGHT_VERSION: 1.63.0
+  npm_config_cache: $CI_PROJECT_DIR/.npm
+  npm_config_audit: "false"
+  npm_config_fund: "false"
+
+default:
+  image: $NODE_IMAGE
+  interruptible: true
+  cache:
+    key:
+      files: [package-lock.json]
+    paths: [.npm/]
+  before_script:
+    - npm ci --prefer-offline
+
+check:
+  stage: verify
+  script:
+    - npm run check
+
+unit:
+  stage: verify
+  script:
+    - npx vitest run --reporter=default --reporter=junit --outputFile.junit=junit.xml
+  artifacts:
+    when: always
+    reports:
+      junit: junit.xml
+    expire_in: 1 week
+
+build:
+  stage: build
+  script:
+    - npm run build
+  artifacts:
+    paths: [build/]
+    expire_in: 1 day
+
+smoke:
+  stage: e2e
+  # Chromium and its system libraries are in this image; the npm package is added without saving it
+  image: mcr.microsoft.com/playwright:v$PLAYWRIGHT_VERSION-noble
+  needs: [build]
+  variables:
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+  script:
+    - npm install --no-save playwright@$PLAYWRIGHT_VERSION
+    - bash scripts/ci-smoke.sh
+  artifacts:
+    when: on_failure
+    paths:
+      - smoke-failure-*.png
+      - board.log
+      - fake-gitlab.log
+    expire_in: 1 week

@@ -9,3 +9,6 @@ node_modules
 vite.config.*.timestamp-*
 introspect-out
 smoke-failure-*.png
+junit.xml
+fake-gitlab.log
+board.log

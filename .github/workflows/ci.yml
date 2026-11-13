@@ -1,0 +1,61 @@
+# The same checks as .gitlab-ci.yml, for pull requests on GitHub.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PLAYWRIGHT_VERSION: 1.63.0
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: build/
+          retention-days: 1
+
+  smoke:
+    needs: verify
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci
+      - run: npm install --no-save playwright@${{ env.PLAYWRIGHT_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: build/
+      - run: bash scripts/ci-smoke.sh
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-failure
+          path: |
+            smoke-failure-*.png
+            board.log
+            fake-gitlab.log
