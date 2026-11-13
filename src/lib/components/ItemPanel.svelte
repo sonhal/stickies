@@ -1,8 +1,11 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { getBoard } from '$lib/client/board.svelte';
 	import { getUi } from '$lib/client/ui.svelte';
 	import type { WorkItem } from '$lib/fields/types';
-	import { issuePath, keepShellParams } from '$lib/client/urlState';
+	import { issuePath, issueUrl } from '$lib/client/urlState';
+	import { childTypesOf } from '$lib/fields/registry';
+	import Popover from './ui/Popover.svelte';
 	import DetailPanel from './DetailPanel.svelte';
 	import FieldEditor from './FieldEditor.svelte';
 	import DescriptionEditor from './DescriptionEditor.svelte';
@@ -11,7 +14,16 @@
 	 * The detail panel with inline editing and a conflict notice. `page` draws it as the full
 	 * issue page (/issue/<id>): parents and sub-issues are links there, and it has no close button.
 	 */
-	let { item, onclose, page = false }: { item: WorkItem; onclose?: () => void; page?: boolean } = $props();
+	interface Props {
+		item: WorkItem;
+		onclose?: () => void;
+		page?: boolean;
+		/** Page only: the breadcrumb bar (see DetailPanel) */
+		bar?: Snippet<[WorkItem]>;
+		/** Page only: show the Properties column */
+		showProps?: boolean;
+	}
+	let { item, onclose, page = false, bar, showProps = true }: Props = $props();
 	const board = getBoard();
 	const ui = getUi();
 	const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -45,17 +57,17 @@
 		if (t && t !== item.title) board.update(item.id, 'title', t);
 	}
 
-	/** A link to the item's full page (keeping ?sidebar=hidden when it's in the URL). */
-	async function copyLink(i: WorkItem) {
-		const qs = keepShellParams('', new URLSearchParams(location.search));
-		const url = new URL(issuePath(i.id) + (qs ? `?${qs}` : ''), location.origin);
-		try {
-			await navigator.clipboard.writeText(url.href);
-			ui.toast(`Link to ${i.ref} copied`);
-		} catch {
-			window.prompt('Copy this link', url.href);
-		}
+	/**
+	 * Create a child of `type` under `parent`. An epic lives in the group (no project); an issue
+	 * under an epic needs a project picked; a task goes in its issue's project.
+	 */
+	function addChild(parent: WorkItem, type: string) {
+		const groupLevel = type.toLowerCase() === 'epic' || parent.type.toLowerCase() === 'epic';
+		ui.createOpen = { parentId: parent.id, type, projectId: groupLevel ? undefined : (parent.projectId ?? undefined) };
 	}
+
+	/** A link to the item's full page (keeping ?sidebar=hidden when it's in the URL). */
+	const copyLink = (i: WorkItem) => ui.copy(issueUrl(i.id, new URL(location.href)), `Link to ${i.ref} copied`);
 </script>
 
 {#if changedElsewhere}
@@ -73,6 +85,8 @@
 	hrefFor={page ? issuePath : undefined}
 	pageHref={page ? undefined : issuePath(item.id)}
 	onpage={() => ui.close()}
+	{bar}
+	{showProps}
 >
 	{#snippet title(i)}
 		{#if editingTitle}
@@ -109,18 +123,38 @@
 		{/if}
 	{/snippet}
 	{#snippet childAction(i)}
-		{#if !ui.readOnly}
-			<button
-				type="button"
-				class="btn ghost small"
-				onclick={() => (ui.createOpen = { projectId: i.type.toLowerCase() === 'epic' ? undefined : (i.projectId ?? undefined), parentId: i.id })}
-				>+ Add sub-issue</button
-			>
+		<!-- What GitLab allows under this type: an epic holds epics and issues, an issue holds tasks, a task nothing -->
+		{@const allowed = childTypesOf(board.reg, i.type)}
+		{#if !ui.readOnly && allowed.length === 1}
+			<button type="button" class="btn ghost small" onclick={() => addChild(i, allowed[0])}>+ Add {allowed[0].toLowerCase()}</button>
+		{:else if !ui.readOnly && allowed.length > 1}
+			<Popover label="Add child item" triggerClass="btn ghost small" width="180px">
+				{#snippet trigger()}+ Add child item{/snippet}
+				{#snippet children(close)}
+					<div class="menu">
+						{#each allowed as t (t)}
+							<button type="button" class="menu-item" onclick={() => (close(), addChild(i, t))}>{t}</button>
+						{/each}
+					</div>
+				{/snippet}
+			</Popover>
 		{/if}
 	{/snippet}
 	{#snippet value(f, i)}<FieldEditor key={f.key} item={i} />{/snippet}
 	{#snippet description(i, read)}{#key i.id}<DescriptionEditor item={i} {read} />{/key}{/snippet}
+	{#snippet propsActions(i)}
+		<!-- As in Linear's Properties header: copy the link, copy the ID -->
+		<button type="button" class="btn ghost small icon" onclick={() => copyLink(i)} title="Copy link" aria-label="Copy link">
+			<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+				><path d="M6.5 9.5l3-3M7 4.5l1.2-1.2a2.8 2.8 0 014 4L11 8.5M9 11.5l-1.2 1.2a2.8 2.8 0 01-4-4L5 7.5" /></svg
+			>
+		</button>
+		<button type="button" class="btn ghost small icon" onclick={() => ui.copy(i.ref, `Copied ${i.ref}`)} title="Copy ID ({i.ref})" aria-label="Copy ID">
+			<span class="mono-id" aria-hidden="true">#</span>
+		</button>
+	{/snippet}
 	{#snippet actions(i)}
+		{#if !page}
 		<div class="item-actions">
 			<button type="button" class="btn ghost small" title="Copy a link to the full page for this {i.type.toLowerCase()}" onclick={() => copyLink(i)}>Copy link</button>
 			<!-- Only when GitLab says this viewer may delete it: no dead button for everyone else. -->
@@ -134,6 +168,7 @@
 				>
 			{/if}
 		</div>
+		{/if}
 	{/snippet}
 </DetailPanel>
 
@@ -148,6 +183,15 @@
 	/* Line the first label up with the panel's text, not the button's padding */
 	.item-actions .btn:first-child {
 		margin-left: -7px;
+	}
+	.icon {
+		width: 28px;
+		padding: 0;
+		justify-content: center;
+	}
+	.mono-id {
+		font-family: var(--mono);
+		font-size: 13px;
 	}
 	.conflict {
 		display: flex;

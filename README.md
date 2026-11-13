@@ -25,10 +25,14 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   Filters match all or any, and any filter can get alternatives ("Priority is High **or** due this week").
   Everyone can save their own views in their browser, share a view as a link, and export/import JSON.
 - **Issue pages:** every issue and epic has a full page at `/issue/<id>` (the number at the end of its
-  GitLab id; a reference like `team/api%2312` works too), laid out like Linear's issue view: title,
-  description and sub-issues, with the properties on the right, all editable in place. **Copy link** (in the
-  side panel and on the page) copies that address; ⤢ in the side panel opens it. `Esc` goes back. The side
-  panel itself is a quick look and isn't in the URL.
+  GitLab id; a reference like `team/api%2312` works too), laid out like Linear's issue view: a breadcrumb
+  bar with a ••• menu (Open in GitLab, Copy link, Copy ID, Delete), title, description and sub-issues, and a
+  Properties column on the right that can be hidden. Everything edits in place. **Child items** follow
+  GitLab's work item hierarchy as GitLab reports it (`allowedChildTypes`; GitLab's documented defaults on
+  older versions): an epic holds epics and issues, an issue holds tasks, a task nothing, so the page offers
+  "+ Add child item" (Epic / Issue), "+ Add task", or no button. Parent pickers only offer allowed parents. **Copy link** (side panel,
+  page, or the link icon in Properties) copies that address; ⤢ in the side panel opens it. `Esc` goes back.
+  The side panel itself is a quick look and isn't in the URL.
 - **`?sidebar=hidden`** (optional) opens the board with the sidebar hidden, e.g. for a wall screen:
   `/kiosk/<KIOSK_KEY>?sidebar=hidden`. It isn't saved as anyone's preference, and stays in the URL through
   kiosk rotation and reloads until someone shows the sidebar. Without it, the sidebar is as you left it.

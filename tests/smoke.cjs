@@ -270,15 +270,24 @@ step('full issue page: open from the panel, links, Esc back, sub-issues, not fou
 	await p.waitForSelector('aside.props [role="dialog"], aside.props [role="listbox"]');
 	await p.keyboard.press('Escape');
 	if (await p.locator('aside.detail').count()) throw new Error('S opened the side panel');
+	// The ••• menu has the item actions; the Properties column can be hidden and comes back
+	await p.click('button[title="More actions"]');
+	await p.waitForSelector('[role="dialog"] >> text=Copy ID');
+	await p.keyboard.press('Escape');
+	await p.click('button[aria-label="Hide properties"]');
+	await p.waitForSelector('aside.props', { state: 'detached' });
+	await p.click('button[aria-label="Show properties"]');
+	await p.waitForSelector('aside.props');
 	// Parent link → the parent's page; Esc goes back, twice back to the list
 	const crumb = p.locator('article.page a.crumb').first();
 	if (await crumb.count()) {
 		await crumb.click();
 		await p.waitForFunction((u) => location.pathname !== u, issueUrl);
-		await p.waitForSelector('article.page h3:has-text("Sub-issues")');
+		await p.waitForSelector('article.page h3:has-text("Child items")');
 		if (!(await p.locator(`article.page a.child[href="${issueUrl}"]`).count())) throw new Error('parent page does not list the issue as a sub-issue');
 		await p.keyboard.press('Escape');
 		await p.waitForFunction((u) => location.pathname === u, issueUrl);
+		await p.waitForSelector('article.page a.crumb'); // the issue's page is back (the epic has no parent)
 	}
 	await p.keyboard.press('Escape');
 	await p.waitForURL('**/v/my-issues');
@@ -297,6 +306,33 @@ step('full issue page: open from the panel, links, Esc back, sub-issues, not fou
 	await p.waitForSelector('.list .row');
 	await p.waitForTimeout(200);
 	if (await p.locator('aside.detail').count()) throw new Error('?issue= still opens the panel');
+});
+
+step("child items follow GitLab's hierarchy: epic → epic | issue, issue → task", async (p) => {
+	// An epic offers epics and issues
+	await open(p, '/epics');
+	await p.locator('a[href^="/epics/"]').first().waitFor();
+	const epicId = (await p.locator('a[href^="/epics/"]').first().getAttribute('href')).split('/').pop();
+	await open(p, `/issue/${epicId}`);
+	await p.waitForSelector('article.page');
+	await p.locator('article.page button:has-text("+ Add child item")').click();
+	const kinds = await p.locator('[role="dialog"] .menu-item').allInnerTexts();
+	if (kinds.join() !== 'Epic,Issue') throw new Error(`epic offers ${kinds}`);
+	await p.keyboard.press('Escape');
+	// An issue offers tasks: "New task" with the issue as parent, and only issues as possible parents
+	await open(p, '/v/my-issues');
+	await p.locator('.row .hit').first().click();
+	await p.click('aside.detail a[aria-label="Open as page"]');
+	await p.waitForSelector('article.page');
+	const issueId = new URL(p.url()).pathname.split('/').pop();
+	await p.locator('article.page button:has-text("+ Add task")').click();
+	await p.waitForSelector('dialog[open] >> text=New task');
+	const parent = p.locator('dialog[open] select').last();
+	if ((await parent.inputValue()) !== `gid://gitlab/WorkItem/${issueId}`) throw new Error('task not preset under its issue');
+	const epicTitle = await p.evaluate(async (id) => (await (await fetch('/api/board')).json()).board.items.find((i) => i.id.endsWith('/' + id))?.title, epicId);
+	if (epicTitle && (await parent.locator('option', { hasText: epicTitle }).count())) throw new Error('an epic is offered as a task parent');
+	await p.keyboard.press('Escape');
+	await p.waitForSelector('dialog[open]', { state: 'detached' });
 });
 
 step('?sidebar=hidden hides the sidebar and stays until you show it', async (p) => {
@@ -404,6 +440,7 @@ step('the kiosk shows config views and cannot write', async (p, ctx, browser) =>
 		} catch (err) {
 			failed++;
 			console.log(`✗ ${s.name}: ${err.message.split('\n')[0]}`);
+			console.log(`    at ${p.url()}`);
 			await p.screenshot({ path: `smoke-failure-${steps.indexOf(s)}.png` }).catch(() => {});
 		}
 	}

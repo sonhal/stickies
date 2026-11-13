@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { getBoard } from '$lib/client/board.svelte';
 	import { getUi } from '$lib/client/ui.svelte';
 	import { appliesTo, optionById, orderedOptions, valueIds } from '$lib/fields/registry';
@@ -25,8 +26,10 @@
 	let open = $state(false);
 	let draft = $state('');
 
-	// Keyboard shortcuts (s, a, l, w) open the matching editor in the panel.
-	let lastReq = 0;
+	// Keyboard shortcuts (s, a, l, w) open the matching editor in the panel. Only requests made
+	// after this editor appeared: a new editor (another page, the panel re-opening) must not replay
+	// an old one and pop open on its own.
+	let lastReq = untrack(() => ui.editRequest?.n ?? 0);
 	$effect(() => {
 		const r = ui.editRequest;
 		if (r && r.n !== lastReq && r.field === key && ui.selectedId === item.id && editable) {
@@ -51,7 +54,9 @@
 		if (!field) return [];
 		if (field.kind === 'people') return board.reg.people.map((p) => ({ id: p.id, label: p.name, hint: `@${p.username}` }));
 		if (field.key === 'native:parent') {
-			return (field.options ?? [])
+			// Only parents GitLab allows for this type (an issue under an epic, a task under an issue)
+			return board
+				.parentChoices(item.type, item.parentId)
 				.filter((o) => o.id !== item.id && board.byId.get(o.id)?.parentId !== item.id)
 				.map((o) => ({ id: o.id, label: o.label, hint: o.hint }));
 		}

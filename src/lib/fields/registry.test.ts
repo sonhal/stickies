@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { registry, selectField, item, opt } from '$lib/testing/factory';
 import {
 	appliesTo,
+	canParent,
+	childTypesOf,
 	closedKind,
 	formatValue,
 	normalizedPosition,
@@ -91,5 +93,29 @@ describe('closedKind', () => {
 		expect(appliesTo(prio, 'Epic')).toBe(true);
 		expect(appliesTo({ ...prio, appliesTo: ['Issue'] }, 'epic')).toBe(false);
 		expect(appliesTo({ ...prio, appliesTo: ['Issue'] }, 'issue')).toBe(true);
+	});
+});
+
+describe('work item hierarchy', () => {
+	it("falls back to GitLab's documented hierarchy: Epic → Epic | Issue, Issue → Task, Task → none", () => {
+		const reg = registry();
+		expect(childTypesOf(reg, 'Epic')).toEqual(['Epic', 'Issue']);
+		expect(childTypesOf(reg, 'issue')).toEqual(['Task']);
+		expect(childTypesOf(reg, 'Task')).toEqual([]);
+		expect(canParent(reg, 'Issue', 'Task')).toBe(true);
+		expect(canParent(reg, 'Issue', 'Issue')).toBe(false);
+		expect(canParent(reg, 'Epic', 'Task')).toBe(false);
+	});
+	it("uses GitLab's allowedChildTypes when it reported them, and only types the group has", () => {
+		const reg = registry([], {
+			types: [
+				{ id: 't1', name: 'Issue', childTypes: ['Task', 'Incident'] },
+				{ id: 't5', name: 'Task', childTypes: [] },
+				{ id: 't8', name: 'Epic', childTypes: ['epic', 'Issue', 'Objective'] }
+			]
+		});
+		expect(childTypesOf(reg, 'Epic')).toEqual(['Epic', 'Issue']); // spelled as the group spells them; Objective isn't in the group
+		expect(childTypesOf(reg, 'Issue')).toEqual(['Task']);
+		expect(childTypesOf(reg, 'Unknown type')).toEqual([]);
 	});
 });
