@@ -14,9 +14,11 @@
 	import ItemPanel from '$lib/components/ItemPanel.svelte';
 	import CreateDialog from '$lib/components/CreateDialog.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
+	import ShortcutSheet from '$lib/components/ShortcutSheet.svelte';
 	import type { Command } from '$lib/client/commands';
+	import type { NavDir } from '$lib/client/boardNav';
 	import { appliesTo, closedKind } from '$lib/fields/registry';
-	import type { BoardData } from '$lib/fields/types';
+	import type { BoardData, FieldKey, WorkItem } from '$lib/fields/types';
 	import type { LayoutProps } from './$types';
 
 	let { data, children }: LayoutProps = $props();
@@ -62,6 +64,7 @@
 				: null
 	});
 
+	const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 	const selected = $derived(ui.selectedId ? (board.byId.get(ui.selectedId) ?? null) : null);
 	let navOpen = $state(false);
 	/** Desktop: sidebar hidden completely for more room. Remembered per browser (a convenience only). */
@@ -184,68 +187,160 @@
 	let gPending = false;
 	let gTimer: ReturnType<typeof setTimeout> | undefined;
 
+	/** A dialog, popover, palette or the shortcut sheet is up: it owns the keyboard. */
+	function overlayOpen(e: KeyboardEvent): boolean {
+		if (ui.paletteOpen || ui.createOpen || ui.shortcutsOpen) return true;
+		if ((e.target as HTMLElement | null)?.closest('[role="dialog"], dialog')) return true;
+		return !!document.querySelector('[role="dialog"], dialog[open]');
+	}
+
+	/**
+	 * Every key listed in $lib/client/shortcuts.ts is handled here, apart from the matrix walk-through
+	 * (MatrixLayout) and Alt+arrows on a focused card (BoardLayout). Keep the two in step.
+	 */
 	function onKey(e: KeyboardEvent) {
-		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+		const mod = e.metaKey || e.ctrlKey;
+		// Ctrl/Cmd+K works from anywhere, text fields included, like Linear.
+		if (mod && !e.altKey && e.key.toLowerCase() === 'k') {
 			e.preventDefault();
 			ui.paletteOpen = !ui.paletteOpen;
 			return;
 		}
-		if (e.defaultPrevented || isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
-		if ((e.target as HTMLElement | null)?.closest('[role="dialog"]')) return;
-		if (ui.paletteOpen || ui.createOpen) return;
+		if (e.defaultPrevented || isTyping(e) || overlayOpen(e)) return;
 
-		if (e.key === '[') {
-			e.preventDefault();
-			setNavHidden(!navHidden);
+		if (mod) {
+			// In a text field the browser's own undo runs instead (isTyping above).
+			if (!e.altKey && !e.shiftKey && e.key.toLowerCase() === 'z' && !ui.readOnly) {
+				e.preventDefault();
+				board.undo();
+			}
 			return;
 		}
+		if (e.altKey) {
+			if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.shiftKey && !ui.readOnly && ui.layout !== 'matrix') {
+				if (ui.nav?.shift?.(e.key === 'ArrowRight' ? 1 : -1)) e.preventDefault();
+			}
+			return;
+		}
+
+		// Letters are matched in lower case (Caps Lock); Shift+letter keeps its capital (Shift+H/L).
+		const key = e.key.length === 1 && !e.shiftKey ? e.key.toLowerCase() : e.key;
 
 		if (gPending) {
 			gPending = false;
 			clearTimeout(gTimer);
-			const n = Number(e.key);
-			if (n >= 1 && n <= 9 && views.all[n - 1]) goto(`/v/${views.all[n - 1].id}`);
-			else if (e.key === 'e') goto('/epics');
-			else if (e.key === 'h') goto('/');
+			const n = Number(key);
+			const go = n >= 1 && n <= 9 && views.all[n - 1] ? `/v/${views.all[n - 1].id}` : key === 'e' ? '/epics' : key === 'h' ? '/' : null;
+			if (go) {
+				e.preventDefault();
+				goto(go);
+				return;
+			}
+			// Not a G sequence after all: the key does what it normally does.
+		}
+
+		if (key === '?') {
+			e.preventDefault();
+			ui.shortcutsOpen = true;
 			return;
 		}
-		if (e.key === 'Escape') {
+		if (key === '[') {
+			e.preventDefault();
+			setNavHidden(!navHidden);
+			return;
+		}
+		// The filter bar watches these counters: `/` focuses its search, F opens "add filter".
+		if (key === '/') {
+			e.preventDefault();
+			ui.searchRequest++;
+			return;
+		}
+		if (key === 'f') {
+			e.preventDefault();
+			ui.filterRequest++;
+			return;
+		}
+		if (key === 'Escape') {
 			if (ui.panelOpen) ui.close();
 			else ui.selectedId = null;
 			return;
 		}
-		if (e.key === 'g') {
+		if (key === 'g') {
 			gPending = true;
+			clearTimeout(gTimer);
 			gTimer = setTimeout(() => (gPending = false), 1200);
 			return;
 		}
-		if (e.key === 'c' && !ui.readOnly) {
+		if (key === 'c' && !ui.readOnly) {
 			e.preventDefault();
 			ui.createOpen = { ...ui.createDefaults };
 			return;
 		}
 		if (ui.layout === 'matrix') return; // the matrix walk-through owns j/k/arrows
-		if (e.key === 'j' || e.key === 'ArrowDown') {
+
+		// Board: Shift+H / Shift+L move the selected card, like Alt+← / Alt+→.
+		if ((key === 'H' || key === 'L') && !ui.readOnly) {
+			if (ui.nav?.shift?.(key === 'L' ? 1 : -1)) e.preventDefault();
+			return;
+		}
+		const dirs: Record<string, NavDir> = { j: 'down', ArrowDown: 'down', k: 'up', ArrowUp: 'up' };
+		// Sideways only means something on a layout with columns; in a list, L edits labels.
+		if (ui.nav) Object.assign(dirs, { h: 'left', ArrowLeft: 'left', l: 'right', ArrowRight: 'right' });
+		const dir = e.shiftKey && key.startsWith('Arrow') ? undefined : dirs[key];
+		if (dir) {
 			e.preventDefault();
-			ui.move(1);
-		} else if (e.key === 'k' || e.key === 'ArrowUp') {
+			if (ui.nav) ui.nav.move(dir);
+			else if (dir === 'down' || dir === 'up') ui.move(dir === 'down' ? 1 : -1);
+			return;
+		}
+		if (!ui.selectedId) return;
+		if (key === 'Enter' || key === 'o') {
+			// Enter on a button or link is that control's own click (a focused card opens itself).
+			if (key === 'Enter' && (e.target as HTMLElement | null)?.closest('button, a, [role="button"]')) return;
 			e.preventDefault();
-			ui.move(-1);
-		} else if (e.key === 'Enter' && ui.selectedId) {
 			ui.panelOpen = true;
-		} else if (ui.selectedId && !ui.readOnly) {
-			const map: Record<string, Parameters<UiState['edit']>[0]> = {
-				s: 'native:status',
-				a: 'native:assignees',
-				l: 'native:labels',
-				w: 'native:weight'
-			};
-			if (map[e.key]) {
-				e.preventDefault();
-				ui.edit(map[e.key]);
-			}
+			return;
+		}
+		if (ui.readOnly) return;
+		if (key === 'i') {
+			e.preventDefault();
+			const item = board.byId.get(ui.selectedId);
+			if (item) assignToMe(item);
+			return;
+		}
+		const edits: Record<string, FieldKey> = {
+			s: 'native:status',
+			a: 'native:assignees',
+			l: 'native:labels',
+			w: 'native:weight'
+		};
+		if (edits[key]) {
+			e.preventDefault();
+			ui.edit(edits[key]);
 		}
 	}
+
+	/**
+	 * Adds the signed-in user to the item's assignees (I, and the palette's "Assign to me").
+	 * Adds rather than replaces: someone already on the issue stays on it.
+	 */
+	function assignToMe(item: WorkItem) {
+		const me = board.reg.currentUserId;
+		const f = board.field('native:assignees');
+		if (!me || !f?.editable || !appliesTo(f, item.type)) {
+			ui.toast("Assignees can't be changed here");
+			return;
+		}
+		const v = item.values['native:assignees'];
+		const ids = v?.kind === 'people' ? v.ids : [];
+		if (ids.includes(me)) {
+			ui.toast(`You're already assigned to ${item.ref}`);
+			return;
+		}
+		board.update(item.id, 'native:assignees', [...ids, me]);
+	}
+
+	const hasEpicType = $derived(board.reg.types.some((t) => t.name.toLowerCase() === 'epic'));
 
 	const showPanel = $derived(!!selected && ui.panelOpen);
 
@@ -256,7 +351,12 @@
 		const out: Command[] = [];
 		if (!ui.readOnly)
 			out.push({ id: 'act:new', group: 'Actions', label: 'New issue', hint: 'C', run: () => (ui.createOpen = { ...ui.createDefaults }) });
+		if (!ui.readOnly && hasEpicType)
+			out.push({ id: 'act:new-epic', group: 'Actions', label: 'New epic', run: () => (ui.createOpen = { ...ui.createDefaults, type: 'Epic' }) });
+		if (!ui.readOnly)
+			out.push({ id: 'act:undo', group: 'Actions', label: 'Undo the last change', hint: isMac ? '⌘ Z' : 'Ctrl Z', run: () => board.undo() });
 		out.push(
+			{ id: 'act:shortcuts', group: 'Actions', label: 'Keyboard shortcuts', hint: '?', keywords: 'keys help hotkeys', run: () => (ui.shortcutsOpen = true) },
 			{ id: 'act:refresh', group: 'Actions', label: 'Refresh from GitLab', run: refresh },
 			{ id: 'act:theme', group: 'Actions', label: 'Switch theme (auto / dark / light)', run: cycleTheme },
 			{ id: 'go:epics', group: 'Actions', label: 'Go to epics', hint: 'G E', run: () => goto('/epics') }
@@ -273,7 +373,7 @@
 				}
 			}
 			if (board.reg.currentUserId && board.field('native:assignees'))
-				out.push({ id: 'assign:me', group: `Selected: ${short}`, label: 'Assign to me', run: () => board.update(sel.id, 'native:assignees', [board.reg.currentUserId!]) });
+				out.push({ id: 'assign:me', group: `Selected: ${short}`, label: 'Assign to me', hint: 'I', run: () => assignToMe(sel) });
 			out.push(
 				{ id: 'assign:none', group: `Selected: ${short}`, label: 'Unassign', run: () => board.update(sel.id, 'native:assignees', []) },
 				{ id: 'edit:labels', group: `Selected: ${short}`, label: 'Edit labels…', hint: 'L', run: () => ui.edit('native:labels') },
@@ -379,6 +479,10 @@
 
 	{#if ui.paletteOpen}
 		<CommandPalette {commands} onclose={() => (ui.paletteOpen = false)} />
+	{/if}
+
+	{#if ui.shortcutsOpen}
+		<ShortcutSheet readOnly={ui.readOnly} onclose={() => (ui.shortcutsOpen = false)} />
 	{/if}
 
 	<div class="toasts" role="status" aria-live="polite">
