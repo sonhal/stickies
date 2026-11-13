@@ -6,8 +6,9 @@
 import * as v from 'valibot';
 import { CMPS, type FilterGroup, type ViewDefinition } from './types';
 
-const MAX_RULES = 40;
-const MAX_DEPTH = 4;
+/** Limits on a view's filter tree. The filter UI (edit.ts) checks them before it changes a view. */
+export const MAX_RULES = 40;
+export const MAX_DEPTH = 4;
 
 const Str = (max: number) => v.pipe(v.string(), v.maxLength(max));
 const Id = v.pipe(v.string(), v.minLength(1), v.maxLength(64), v.regex(/^[A-Za-z0-9_-]+$/));
@@ -73,7 +74,7 @@ function depth(g: FilterGroup, d = 1): number {
 	return max;
 }
 
-function countRules(g: FilterGroup): number {
+export function countRules(g: FilterGroup): number {
 	return g.rules.reduce((n, r) => n + ('op' in r ? countRules(r) : 1), 0);
 }
 
