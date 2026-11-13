@@ -4,15 +4,17 @@
 	import { untrack } from 'svelte';
 	import { getBoard } from '$lib/client/board.svelte';
 	import { getUi } from '$lib/client/ui.svelte';
-	import { findItemByParam, itemParam } from '$lib/client/urlState';
+	import { findItemByParam, issueUrl, itemParam } from '$lib/client/urlState';
 	import { closedKind } from '$lib/fields/registry';
 	import { slotVar } from '$lib/colors';
 	import ItemPanel from '$lib/components/ItemPanel.svelte';
+	import Popover from '$lib/components/ui/Popover.svelte';
+	import type { WorkItem } from '$lib/fields/types';
 
 	/**
 	 * /issue/<id>: an issue's or epic's full page, the link target for "Copy link". Laid out like
-	 * Linear's issue view: a bar with where it lives, then title, description and sub-issues, with
-	 * the properties on the right. Everything edits in place, as in the side panel.
+	 * Linear's issue view: a breadcrumb bar with a ⋯ menu over title, description and sub-issues,
+	 * and a Properties column on the right (which can be hidden). Everything edits in place.
 	 */
 	const board = getBoard();
 	const ui = getUi();
@@ -21,6 +23,26 @@
 	const isEpic = $derived(item?.type.toLowerCase() === 'epic');
 	const project = $derived(item?.projectId ? (board.reg.projects.find((p) => p.id === item.projectId) ?? null) : null);
 	const closed = $derived(item ? closedKind(board.reg, item) : null);
+
+	/** The Properties column, shown unless hidden; remembered per browser (a convenience only). */
+	const PROPS_KEY = 'board-issue-props-hidden';
+	let showProps = $state(true);
+	$effect(() => {
+		try {
+			showProps = localStorage.getItem(PROPS_KEY) !== '1';
+		} catch {
+			/* storage blocked */
+		}
+	});
+	function toggleProps() {
+		showProps = !showProps;
+		try {
+			if (showProps) localStorage.removeItem(PROPS_KEY);
+			else localStorage.setItem(PROPS_KEY, '1');
+		} catch {
+			/* storage blocked: the choice just isn't remembered */
+		}
+	}
 
 	// Back (button and Esc): to where you came from in the board, or home for a link opened fresh.
 	let cameFromBoard = false;
@@ -50,6 +72,10 @@
 		return () => {
 			ui.pageBack = null;
 			ui.pageItemId = null;
+			// Shortcuts here (s, a, l, w) mark the side panel open for this item, hidden while the page
+			// shows it. Leaving shouldn't pop that panel, with an editor, up on the next page.
+			ui.panelOpen = false;
+			ui.editRequest = null;
 		};
 	});
 
@@ -68,32 +94,57 @@
 	<title>{item ? `${item.ref.replace(/^.*\//, '')} ${item.title}` : 'Issue not found'} · Board</title>
 </svelte:head>
 
+{#snippet bar(i: WorkItem)}
+	<button type="button" class="btn ghost small" onclick={back} title="Back (Esc)" aria-label="Back">←</button>
+	<nav class="where" aria-label="Breadcrumb">
+		<span class="dot" style="background: {slotVar(board.colors.slotFor(i))}"></span>
+		{#if isEpic}
+			<a href="/epics">Epics</a>
+		{:else if project}
+			<a href="/team/{project.fullPath}">{project.name}</a>
+		{/if}
+		<span aria-hidden="true">›</span>
+		<span class="ref">{i.ref.replace(/^.*\//, '')}</span>
+	</nav>
+	{#if closed}<span class="chip closed">{closed === 'done' ? 'Completed' : 'Canceled'}</span>{/if}
+	<Popover label="{i.type} actions" triggerClass="btn ghost small" triggerTitle="More actions" width="220px">
+		{#snippet trigger()}<span aria-label="More actions">•••</span>{/snippet}
+		{#snippet children(close)}
+			<div class="menu">
+				{#if i.url}
+					<a class="menu-item" href={i.url} target="_blank" rel="noopener noreferrer" onclick={close}>Open in GitLab ↗</a>
+				{/if}
+				{#if isEpic}
+					<a class="menu-item" href="/epics/{encodeURIComponent(itemParam(i.id))}" onclick={close}>Issues in a view</a>
+				{/if}
+				<button type="button" class="menu-item" onclick={() => (close(), ui.copy(issueUrl(i.id, new URL(location.href)), `Link to ${i.ref} copied`))}>Copy link</button>
+				<button type="button" class="menu-item" onclick={() => (close(), ui.copy(i.ref, `Copied ${i.ref}`))}>Copy ID</button>
+				{#if !ui.readOnly && i.canDelete}
+					<button type="button" class="menu-item danger" onclick={() => (close(), (ui.deleteRequest = i.id))}>Delete {isEpic ? 'epic' : 'issue'}…</button>
+				{/if}
+			</div>
+		{/snippet}
+	</Popover>
+	<span class="spacer"></span>
+	<button
+		type="button"
+		class="btn ghost small"
+		class:on={showProps}
+		onclick={toggleProps}
+		aria-pressed={showProps}
+		aria-label={showProps ? 'Hide properties' : 'Show properties'}
+		title={showProps ? 'Hide properties' : 'Show properties'}
+	>
+		<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4"
+			><rect x="2" y="3" width="12" height="10" rx="2" /><path d="M10 3v10" /></svg
+		>
+	</button>
+{/snippet}
+
 {#if item}
 	<div class="issue-page">
-		<header class="bar">
-			<button type="button" class="btn ghost small" onclick={back} title="Back (Esc)" aria-label="Back">←</button>
-			<nav class="where" aria-label="Breadcrumb">
-				<span class="dot" style="background: {slotVar(board.colors.slotFor(item))}"></span>
-				{#if isEpic}
-					<a href="/epics">Epics</a>
-				{:else if project}
-					<a href="/team/{project.fullPath}">{project.name}</a>
-				{/if}
-				<span aria-hidden="true">›</span>
-				<span class="ref">{item.ref.replace(/^.*\//, '')}</span>
-			</nav>
-			<span class="chip">{item.type}</span>
-			{#if closed}<span class="chip closed">{closed === 'done' ? 'Completed' : 'Canceled'}</span>{/if}
-			<span class="spacer"></span>
-			{#if isEpic}
-				<a class="btn ghost small" href="/epics/{encodeURIComponent(itemParam(item.id))}" title="This epic's issues as a list or board">Issues in a view</a>
-			{/if}
-			{#if item.url}
-				<a class="btn ghost small" href={item.url} target="_blank" rel="noopener noreferrer">Open in GitLab ↗</a>
-			{/if}
-		</header>
 		{#key item.id}
-			<ItemPanel {item} page />
+			<ItemPanel {item} page {bar} {showProps} />
 		{/key}
 	</div>
 {:else}
@@ -111,24 +162,14 @@
 	.issue-page {
 		display: flex;
 		flex-direction: column;
-		min-height: calc(100vh - 40px);
-	}
-	.bar {
-		display: flex;
-		align-items: center;
-		flex-wrap: wrap;
-		gap: 4px 8px;
-		padding: 6px 14px 8px;
-		border-bottom: 1px solid var(--grid);
-		font-size: 13px;
-		min-width: 0;
+		min-height: calc(100vh - 36px);
 	}
 	.where {
 		display: flex;
 		align-items: center;
 		gap: 6px;
 		min-width: 0;
-		flex: 0 1 auto;
+		font-size: 13px;
 		color: var(--text-muted);
 	}
 	.where > * {
@@ -137,9 +178,6 @@
 	.where a {
 		color: var(--text-secondary);
 		text-decoration: none;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
 	}
 	.where a:hover {
 		text-decoration: underline;
@@ -148,12 +186,10 @@
 		width: 9px;
 		height: 9px;
 		border-radius: 50%;
-		flex: none;
 	}
 	.ref {
 		font-family: var(--mono);
 		color: var(--text-primary);
-		white-space: nowrap;
 	}
 	.chip {
 		font-size: 11.5px;
@@ -168,6 +204,16 @@
 	}
 	.spacer {
 		flex: 1;
+	}
+	.on {
+		color: var(--text-primary);
+	}
+	.danger {
+		color: var(--danger);
+	}
+	a.menu-item {
+		color: inherit;
+		text-decoration: none;
 	}
 	.missing {
 		padding: 24px;

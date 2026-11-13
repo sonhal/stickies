@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { item } from '$lib/testing/factory';
-import { findItemByParam, issuePath, itemParam, keepShellParams, readSidebarParam, withSidebarParam } from './urlState';
+import { findItemByParam, issuePath, issueUrl, itemParam, keepShellParams, readSidebarParam, withSidebarParam } from './urlState';
 
 const a = item({}, { id: 'gid://gitlab/WorkItem/123', ref: 'team/api#7' });
 const b = item({}, { id: 'gid://gitlab/WorkItem/456', ref: 'team/web#7' });
@@ -10,6 +10,8 @@ describe('issue links', () => {
 	it('uses the number at the end of the global id', () => {
 		expect(itemParam('gid://gitlab/WorkItem/123')).toBe('123');
 		expect(issuePath('gid://gitlab/WorkItem/123')).toBe('/issue/123');
+		expect(issueUrl(a.id, new URL('http://x/v/list?v=abc&sidebar=hidden'))).toBe('http://x/issue/123?sidebar=hidden');
+		expect(issueUrl(a.id, new URL('http://x/v/list?v=abc'))).toBe('http://x/issue/123');
 	});
 	it('finds an item by short id, global id or reference', () => {
 		expect(findItemByParam([a, b], '456')).toBe(b);

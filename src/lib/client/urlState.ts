@@ -24,6 +24,12 @@ export function issuePath(id: string): string {
 	return `/issue/${encodeURIComponent(itemParam(id))}`;
 }
 
+/** Full link to an item's page, keeping `?sidebar=hidden` when the current URL has it. */
+export function issueUrl(id: string, current: URL): string {
+	const qs = keepShellParams('', current.searchParams);
+	return new URL(issuePath(id) + (qs ? `?${qs}` : ''), current.origin).href;
+}
+
 /** Finds the item a link names (short id, full global id, or reference). */
 export function findItemByParam(items: readonly WorkItem[], value: string | null | undefined): WorkItem | null {
 	const v = value?.trim();

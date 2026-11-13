@@ -35,9 +35,15 @@
 		/** Panel only: link to the item's full page, shown as an expand button in the header */
 		pageHref?: string;
 		onpage?: () => void;
+		/** Page only: the bar at the top of the main column (breadcrumb, menu) */
+		bar?: Snippet<[WorkItem]>;
+		/** Page only: icon buttons in the Properties header (copy link, copy ID) */
+		propsActions?: Snippet<[WorkItem]>;
+		/** Page only: show the Properties column (it can be hidden, as in Linear) */
+		showProps?: boolean;
 	}
 
-	let { item, onclose, onopen, value, title, description, actions, compact = false, page = false, hrefFor, childAction, pageHref, onpage }: Props = $props();
+	let { item, onclose, onopen, value, title, description, actions, compact = false, page = false, hrefFor, childAction, pageHref, onpage, bar, propsActions, showProps = true }: Props = $props();
 	const board = getBoard();
 
 	/** Every field that applies to this item's type, plus any other field it has a value for. */
@@ -120,10 +126,18 @@
 {/snippet}
 
 {#snippet childrenBlock()}
-	{#if children.length || (page && childAction)}
+	{#if page && !children.length}
+		<!-- Like Linear: no empty heading, just a quiet "+ Add sub-issues" under the description -->
+		<div class="add-sub">
+			{@render childAction?.(item)}
+			{#if childrenElsewhere}
+				<p class="elsewhere muted">{childrenElsewhere} sub-item{childrenElsewhere === 1 ? '' : 's'} in GitLab that aren't on the board (closed a while ago, or not visible to you).</p>
+			{/if}
+		</div>
+	{:else if children.length}
 		<section class="children">
 			<h3>
-				{page ? 'Sub-issues' : 'Sub-items'}
+				Child items
 				<span class="muted">{#if page && children.length}{childrenDone}/{children.length}{:else}{children.length}{/if}</span>
 				{#if page && childAction}<span class="spacer"></span>{@render childAction(item)}{/if}
 			</h3>
@@ -157,20 +171,31 @@
 
 {#if page}
 	<!-- Full page (/issue/<id>), laid out like Linear's issue view: the work on the left, properties on the right -->
-	<article class="page" aria-label="Issue: {item.title}">
-		<div class="main">
-			{@render crumbsBlock()}
-			{#if title}{@render title(item)}{:else}<h1 class="ptitle">{item.title}</h1>{/if}
-			{#if description}{@render description(item, readDescription)}{:else}{@render readDescription()}{/if}
-			{@render childrenBlock()}
-			{#if actions}{@render actions(item)}{/if}
+	<article class="page" class:noprops={!showProps} aria-label="Issue: {item.title}">
+		<div class="main-col">
+			{#if bar}<div class="pbar">{@render bar(item)}</div>{/if}
+			<div class="main">
+				{@render crumbsBlock()}
+				{#if title}{@render title(item)}{:else}<h1 class="ptitle">{item.title}</h1>{/if}
+				{#if description}{@render description(item, readDescription)}{:else}{@render readDescription()}{/if}
+				{@render childrenBlock()}
+				{#if actions}{@render actions(item)}{/if}
+			</div>
 		</div>
-		<aside class="props" aria-label="Properties">
-			<h2 class="props-h">Properties</h2>
-			{@render fieldsBlock()}
-			{@render progressBlock()}
-			{@render updatedBlock()}
-		</aside>
+		{#if showProps}
+			<aside class="props" aria-label="Properties">
+				<div class="props-head">
+					<h2 class="props-h">Properties</h2>
+					<span class="spacer"></span>
+					{@render propsActions?.(item)}
+				</div>
+				<div class="props-body">
+					{@render fieldsBlock()}
+					{@render progressBlock()}
+					{@render updatedBlock()}
+				</div>
+			</aside>
+		{/if}
 	</article>
 {:else}
 	<article class="panel" class:compact aria-label="Issue details: {item.title}">
@@ -362,12 +387,30 @@
 		padding: 0;
 	}
 
-	/* ---- Full page ---- */
+	/* ---- Full page (like Linear's issue view) ---- */
 	.page {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) 300px;
 		min-height: 0;
 		flex: 1;
+	}
+	.page.noprops {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.main-col {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+	/* The breadcrumb bar and the Properties header line up, both with a rule under them */
+	.pbar,
+	.props-head {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-height: 44px;
+		padding: 4px 14px;
+		border-bottom: 1px solid var(--grid);
 	}
 	.main {
 		display: flex;
@@ -381,7 +424,7 @@
 	}
 	.ptitle {
 		margin: 0;
-		font-size: 24px;
+		font-size: 26px;
 		line-height: 1.25;
 		overflow-wrap: anywhere;
 	}
@@ -399,12 +442,18 @@
 		align-items: center;
 		gap: 8px;
 	}
+	.children h3 .spacer {
+		flex: 1;
+	}
+	.add-sub {
+		margin-left: -7px;
+	}
+	.add-sub .elsewhere {
+		margin-left: 7px;
+	}
 	.elsewhere {
 		font-size: 12.5px;
 		margin: 6px 6px 0;
-	}
-	.children h3 .spacer {
-		flex: 1;
 	}
 	a.child {
 		color: inherit;
@@ -416,21 +465,43 @@
 	.props {
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
-		padding: 18px 18px 32px;
 		border-left: 1px solid var(--border);
 		background: var(--surface-1);
 		min-width: 0;
 	}
+	.props-head {
+		padding-left: 18px;
+	}
 	.props-h {
 		margin: 0;
-		font-size: 12px;
-		font-weight: 600;
+		font-size: 13px;
+		font-weight: 500;
 		color: var(--text-muted);
 	}
+	.props-body {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+		padding: 16px 18px 32px;
+	}
+	/* Stacked, as in Linear: a small heading over each value instead of a two-column table */
 	.props .fields {
-		grid-template-columns: minmax(80px, max-content) minmax(0, 1fr);
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
 		margin: 0;
+	}
+	.props .f {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+	.props dt {
+		padding: 0;
+		font-size: 12px;
+	}
+	.props dd {
+		min-height: 26px;
 	}
 	@media (max-width: 900px) {
 		.page {

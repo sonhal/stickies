@@ -97,6 +97,16 @@ export class UiState {
 		if (this.deleteRequest === id) this.deleteRequest = null;
 	}
 
+	/** Copies text to the clipboard and says so; where the clipboard is blocked, shows it to copy by hand. */
+	async copy(text: string, done: string) {
+		try {
+			await navigator.clipboard.writeText(text);
+			this.toast(done);
+		} catch {
+			window.prompt('Copy this', text);
+		}
+	}
+
 	toast(text: string, kind: Toast['kind'] = 'info') {
 		const t = { id: ++toastSeq, text, kind };
 		this.toasts = [...this.toasts, t];
