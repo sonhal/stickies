@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { afterNavigate, goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount, untrack } from 'svelte';
 	import { BoardState, setBoard } from '$lib/client/board.svelte';
@@ -17,6 +17,7 @@
 	import ShortcutSheet from '$lib/components/ShortcutSheet.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { deleteText } from '$lib/client/deleteText';
+	import { ISSUE_PARAM, findItemByParam, readSidebarParam, withShellState } from '$lib/client/urlState';
 	import type { Command } from '$lib/client/commands';
 	import type { NavDir } from '$lib/client/boardNav';
 	import { appliesTo, closedKind } from '$lib/fields/registry';
@@ -70,9 +71,19 @@
 	const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 	const selected = $derived(ui.selectedId ? (board.byId.get(ui.selectedId) ?? null) : null);
 	let navOpen = $state(false);
-	/** Desktop: sidebar hidden completely for more room. Remembered per browser (a convenience only). */
+	/**
+	 * Desktop: sidebar hidden completely for more room. Kept in the URL (?sidebar=hidden) so a
+	 * shared link opens the same way, and remembered per browser when you toggle it yourself.
+	 */
 	let navHidden = $state(false);
 	const NAV_KEY = 'board-nav-hidden';
+	function storedNavHidden(): boolean {
+		try {
+			return localStorage.getItem(NAV_KEY) === '1';
+		} catch {
+			return false; // storage blocked
+		}
+	}
 	function setNavHidden(hidden: boolean) {
 		navHidden = hidden;
 		try {
@@ -169,11 +180,6 @@
 		document.documentElement.dataset.ready = '1';
 		now = Date.now();
 		const clock = setInterval(() => (now = Date.now()), 10_000);
-		try {
-			navHidden = localStorage.getItem(NAV_KEY) === '1';
-		} catch {
-			/* storage blocked */
-		}
 		try {
 			const saved = localStorage.getItem('board-theme');
 			if (saved === 'light' || saved === 'dark') {
@@ -374,6 +380,48 @@
 	const hasEpicType = $derived(board.reg.types.some((t) => t.name.toLowerCase() === 'epic'));
 
 	const showPanel = $derived(!!selected && ui.panelOpen);
+
+	// ---- URL state (?issue=, ?sidebar=) --------------------------------------------------------
+	// The URL mirrors the open panel and the sidebar, so the address bar is always a link to what
+	// you see. Links you follow set them; links without them keep what you have open.
+	let urlReady = $state(false);
+
+	/** Applies ?issue= and ?sidebar= from a URL we just arrived at. */
+	function applyUrl(url: URL, kind: 'enter' | 'popstate' | 'link') {
+		const side = readSidebarParam(url.searchParams);
+		// From a link it isn't saved: opening someone's link doesn't change your own preference.
+		if (side !== null) navHidden = side;
+		else if (kind === 'enter') navHidden = storedNavHidden();
+
+		const raw = url.searchParams.get(ISSUE_PARAM);
+		if (raw !== null) {
+			const it = findItemByParam(board.items, raw);
+			if (it) ui.open(it.id);
+			else {
+				ui.close();
+				ui.toast("That issue isn't on the board. It may be closed a while ago, deleted, or not visible to you.", 'error');
+			}
+		} else if (kind === 'popstate') {
+			// Back/forward: the history entry says the panel was closed.
+			ui.close();
+		}
+	}
+
+	afterNavigate((nav) => {
+		if (!nav.to) return;
+		applyUrl(nav.to.url, nav.type === 'enter' ? 'enter' : nav.type === 'popstate' ? 'popstate' : 'link');
+		urlReady = true;
+	});
+
+	$effect(() => {
+		// page.url only to re-run after navigations; shallow replaceState leaves it as it was, so
+		// the address bar is what we compare with.
+		void page.url;
+		const state = { issue: showPanel ? ui.selectedId : null, sidebarHidden: navHidden };
+		if (!urlReady) return;
+		const next = withShellState(new URL(location.href), state);
+		if (next) untrack(() => replaceState(next, page.state));
+	});
 
 	// ---- Command palette ----------------------------------------------------------------------------
 	const epicPath = (id: string) => `/epics/${encodeURIComponent(id.slice(id.lastIndexOf('/') + 1))}`;

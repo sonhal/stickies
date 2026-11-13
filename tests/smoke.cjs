@@ -253,6 +253,58 @@ step('the sidebar hides completely and comes back (button, tab, [ key, remembere
 	await p.locator('nav a[href="/v/my-issues"]').waitFor();
 });
 
+step('the URL keeps the open issue and the sidebar (?issue=, ?sidebar=)', async (p) => {
+	const q = () => new URL(p.url()).searchParams;
+	const has = (name, value) =>
+		p.waitForFunction(([n, v]) => {
+			const got = new URL(location.href).searchParams.get(n);
+			return v === undefined ? got === null : v === '*' ? got !== null : got === v;
+		}, [name, value]);
+	// Opening an item puts it in the address bar; closing takes it out
+	await open(p, '/v/my-issues');
+	await p.locator('.row .hit').first().click();
+	await has('issue', '*');
+	const id = q().get('issue');
+	await p.click('aside.detail button[aria-label="Close panel (Esc)"]');
+	await has('issue', undefined);
+	// A link straight to an issue, with the sidebar hidden
+	await open(p, `/v/my-issues?issue=${id}&sidebar=hidden`);
+	await p.waitForSelector('aside.detail article');
+	await p.waitForSelector('button[aria-label="Show sidebar"]');
+	// The sidebar toggle follows too
+	await p.keyboard.press('[');
+	await has('sidebar', undefined);
+	await p.keyboard.press('[');
+	await has('sidebar', 'hidden');
+	// A view change (?v=) keeps both
+	await p.click('button:has-text("Display")');
+	await p.click('[aria-label="Layout"] button:has-text("Board")');
+	await has('v', '*');
+	if (q().get('issue') !== id || q().get('sidebar') !== 'hidden') throw new Error(`view change dropped shell params: ${p.url()}`);
+	await p.keyboard.press('Escape'); // close the Display popover
+	// Reload shows the same thing
+	const url = p.url();
+	await p.reload();
+	await p.waitForSelector('html[data-ready]');
+	await p.waitForSelector('aside.detail article');
+	await p.waitForSelector('button[aria-label="Show sidebar"]');
+	if (p.url() !== url) throw new Error(`reload changed the URL: ${url} → ${p.url()}`);
+	// An unknown issue says so; ?sidebar=shown overrides a hidden preference
+	await open(p, '/v/my-issues?issue=999999&sidebar=shown');
+	await p.waitForSelector("text=That issue isn't on the board");
+	await p.waitForSelector('button[aria-label="Hide sidebar"]');
+	if (await p.locator('aside.detail article').count()) throw new Error('panel opened for an unknown issue');
+	// The epics list writes its own query string and must keep ours
+	await open(p, `/epics?sidebar=hidden&issue=${id}`);
+	await p.waitForSelector('aside.detail article');
+	await p.locator('input[type="search"], input[placeholder*="Search" i]').first().fill('x');
+	await has('q', 'x');
+	if (q().get('sidebar') !== 'hidden' || q().get('issue') !== id) throw new Error(`epics dropped shell params: ${p.url()}`);
+	// Leave things as the steps after this one expect
+	await p.keyboard.press('Escape');
+	await p.click('button[aria-label="Show sidebar"]');
+});
+
 step('an old matrix share link opens as a list with a notice', async (p) => {
 	const LZ = require('lz-string');
 	const old = {

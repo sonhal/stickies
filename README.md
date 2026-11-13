@@ -24,6 +24,10 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   Past month / None), empty groups. Default views live in [`src/lib/views.config.ts`](src/lib/views.config.ts).
   Filters match all or any, and any filter can get alternatives ("Priority is High **or** due this week").
   Everyone can save their own views in their browser, share a view as a link, and export/import JSON.
+- **Links show what you see:** the address bar always holds the open issue and a hidden sidebar, so you
+  can copy it and share it. `?issue=123` opens the side panel on an item (the number at the end of its
+  GitLab id; a reference like `team/api%2312` works too), `?sidebar=hidden` (or `shown`) sets the sidebar.
+  They combine with view links (`?v=`) and the epics list's own parameters. The panel also has **Copy link**.
 - **Layouts:** List, and Board (columns from any single-select field, status, people, parent or epic;
   optional swimlanes; drag to update).
 - **Prioritization:** named tools in their own sidebar section, each an instance of a *tool type*:

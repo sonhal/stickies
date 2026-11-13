@@ -4,6 +4,7 @@
 	import { getViews } from '$lib/client/views-context';
 	import { getUi } from '$lib/client/ui.svelte';
 	import { decodeView, encodeView } from '$lib/client/share';
+	import { keepShellParams } from '$lib/client/urlState';
 	import type { ViewDefinition, ViewScope } from '$lib/query/types';
 	import Workspace from './Workspace.svelte';
 	import Popover from './ui/Popover.svelte';
@@ -53,7 +54,9 @@
 	async function copyLink() {
 		if (!view) return;
 		const path = personal || shared ? '/v/shared' : `/v/${view.id}`;
-		const url = `${page.url.origin}${path}?v=${encodeView(view)}`;
+		// Keeps the open issue and a hidden sidebar, so the link shows what you're looking at.
+		const qs = keepShellParams(`v=${encodeView(view)}`, new URL(location.href).searchParams);
+		const url = `${page.url.origin}${path}?${qs}`;
 		try {
 			await navigator.clipboard.writeText(url);
 			ui.toast('Link copied. Anyone with access to the board can open it.');

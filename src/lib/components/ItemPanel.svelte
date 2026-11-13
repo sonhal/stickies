@@ -2,6 +2,7 @@
 	import { getBoard } from '$lib/client/board.svelte';
 	import { getUi } from '$lib/client/ui.svelte';
 	import type { WorkItem } from '$lib/fields/types';
+	import { ISSUE_PARAM, itemParam } from '$lib/client/urlState';
 	import DetailPanel from './DetailPanel.svelte';
 	import FieldEditor from './FieldEditor.svelte';
 	import DescriptionEditor from './DescriptionEditor.svelte';
@@ -39,6 +40,18 @@
 		editingTitle = false;
 		const t = titleDraft.trim();
 		if (t && t !== item.title) board.update(item.id, 'title', t);
+	}
+
+	/** A link to this page with this item open (and the sidebar as it is now). */
+	async function copyLink(i: WorkItem) {
+		const url = new URL(location.href);
+		url.searchParams.set(ISSUE_PARAM, itemParam(i.id));
+		try {
+			await navigator.clipboard.writeText(url.href);
+			ui.toast(`Link to ${i.ref} copied`);
+		} catch {
+			window.prompt('Copy this link', url.href);
+		}
 	}
 </script>
 
@@ -87,9 +100,10 @@
 	{#snippet value(f, i)}<FieldEditor key={f.key} item={i} />{/snippet}
 	{#snippet description(i, read)}{#key i.id}<DescriptionEditor item={i} {read} />{/key}{/snippet}
 	{#snippet actions(i)}
-		<!-- Only when GitLab says this viewer may delete it: no dead button for everyone else. -->
-		{#if !ui.readOnly && i.canDelete}
-			<div class="item-actions">
+		<div class="item-actions">
+			<button type="button" class="btn ghost small" title="Copy a link that opens this page with this {i.type.toLowerCase()} open" onclick={() => copyLink(i)}>Copy link</button>
+			<!-- Only when GitLab says this viewer may delete it: no dead button for everyone else. -->
+			{#if !ui.readOnly && i.canDelete}
 				<button
 					type="button"
 					class="btn ghost small danger"
@@ -97,18 +111,21 @@
 					disabled={board.pending.has(i.id)}
 					onclick={() => (ui.deleteRequest = i.id)}>Delete {i.type.toLowerCase() === 'epic' ? 'epic' : 'issue'}…</button
 				>
-			</div>
-		{/if}
+			{/if}
+		</div>
 	{/snippet}
 </DetailPanel>
 
 <style>
 	.item-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
 		border-top: 1px solid var(--grid);
 		padding-top: 10px;
 	}
-	/* Line the label up with the panel's text, not the button's padding */
-	.item-actions .btn {
+	/* Line the first label up with the panel's text, not the button's padding */
+	.item-actions .btn:first-child {
 		margin-left: -7px;
 	}
 	.conflict {
