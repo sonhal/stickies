@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { afterNavigate, goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount, untrack } from 'svelte';
 	import { BoardState, setBoard } from '$lib/client/board.svelte';
@@ -17,6 +17,7 @@
 	import ShortcutSheet from '$lib/components/ShortcutSheet.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { deleteText } from '$lib/client/deleteText';
+	import { readSidebarParam, withSidebarParam } from '$lib/client/urlState';
 	import type { Command } from '$lib/client/commands';
 	import type { NavDir } from '$lib/client/boardNav';
 	import { appliesTo, closedKind } from '$lib/fields/registry';
@@ -70,11 +71,28 @@
 	const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 	const selected = $derived(ui.selectedId ? (board.byId.get(ui.selectedId) ?? null) : null);
 	let navOpen = $state(false);
-	/** Desktop: sidebar hidden completely for more room. Remembered per browser (a convenience only). */
+	/**
+	 * Desktop: sidebar hidden completely for more room. Remembered per browser when you toggle it
+	 * yourself. A URL with ?sidebar=hidden (e.g. a kiosk screen) hides it without saving that.
+	 */
 	let navHidden = $state(false);
+	/**
+	 * The sidebar is hidden because the URL said so. The param then stays in the address bar
+	 * (through kiosk rotation and in-app navigation) so a reload keeps it hidden, until you
+	 * toggle the sidebar yourself.
+	 */
+	let navHiddenByUrl = $state(false);
 	const NAV_KEY = 'board-nav-hidden';
+	function storedNavHidden(): boolean {
+		try {
+			return localStorage.getItem(NAV_KEY) === '1';
+		} catch {
+			return false; // storage blocked
+		}
+	}
 	function setNavHidden(hidden: boolean) {
 		navHidden = hidden;
+		navHiddenByUrl = false;
 		try {
 			if (hidden) localStorage.setItem(NAV_KEY, '1');
 			else localStorage.removeItem(NAV_KEY);
@@ -169,11 +187,6 @@
 		document.documentElement.dataset.ready = '1';
 		now = Date.now();
 		const clock = setInterval(() => (now = Date.now()), 10_000);
-		try {
-			navHidden = localStorage.getItem(NAV_KEY) === '1';
-		} catch {
-			/* storage blocked */
-		}
 		try {
 			const saved = localStorage.getItem('board-theme');
 			if (saved === 'light' || saved === 'dark') {
@@ -270,7 +283,8 @@
 			return;
 		}
 		if (key === 'Escape') {
-			if (ui.panelOpen) ui.close();
+			if (showPanel) ui.close();
+			else if (ui.pageBack) ui.pageBack();
 			else ui.selectedId = null;
 			return;
 		}
@@ -373,7 +387,32 @@
 
 	const hasEpicType = $derived(board.reg.types.some((t) => t.name.toLowerCase() === 'epic'));
 
-	const showPanel = $derived(!!selected && ui.panelOpen);
+	// Not for the item whose full page is showing: the page already is its panel.
+	const showPanel = $derived(!!selected && ui.panelOpen && selected.id !== ui.pageItemId);
+
+	// ---- ?sidebar=hidden --------------------------------------------------------------------------
+	// Only read (see navHiddenByUrl). The side panel isn't in the URL: links go to /issue/<id>.
+	let urlReady = $state(false);
+
+	afterNavigate((nav) => {
+		if (!nav.to) return;
+		// From a link it isn't saved: opening a link doesn't change your own preference.
+		if (readSidebarParam(nav.to.url.searchParams)) navHidden = navHiddenByUrl = true;
+		else if (nav.type === 'enter') navHidden = storedNavHidden();
+		urlReady = true;
+	});
+
+	// Keeps ?sidebar=hidden in the address bar while it's what hides the sidebar, so in-app
+	// navigation (and kiosk rotation) followed by a reload stays full-width.
+	$effect(() => {
+		// page.url only to re-run after navigations; shallow replaceState leaves it as it was, so
+		// the address bar is what we compare with.
+		void page.url;
+		const keep = navHiddenByUrl && navHidden;
+		if (!urlReady) return;
+		const next = withSidebarParam(new URL(location.href), keep);
+		if (next) untrack(() => replaceState(next, page.state));
+	});
 
 	// ---- Command palette ----------------------------------------------------------------------------
 	const epicPath = (id: string) => `/epics/${encodeURIComponent(id.slice(id.lastIndexOf('/') + 1))}`;

@@ -55,6 +55,10 @@ export class UiState {
 	shortcutsOpen = $state(false);
 	/** Id of the item whose "Delete…" confirmation is showing (panel button, palette, Mod+Backspace) */
 	deleteRequest = $state<string | null>(null);
+	/** Id of the item whose full page (/issue/<id>) is showing: the side panel stays closed for it */
+	pageItemId = $state<string | null>(null);
+	/** Set by the issue page: what Escape does there (go back to where you came from) */
+	pageBack: (() => void) | null = null;
 	/**
 	 * Set by a layout that moves the selection in its own way (the board: by column and row).
 	 * The shell's key handler calls this instead of `move`. Cleared when the layout goes away.
@@ -91,6 +95,16 @@ export class UiState {
 			this.panelOpen = false;
 		}
 		if (this.deleteRequest === id) this.deleteRequest = null;
+	}
+
+	/** Copies text to the clipboard and says so; where the clipboard is blocked, shows it to copy by hand. */
+	async copy(text: string, done: string) {
+		try {
+			await navigator.clipboard.writeText(text);
+			this.toast(done);
+		} catch {
+			window.prompt('Copy this', text);
+		}
 	}
 
 	toast(text: string, kind: Toast['kind'] = 'info') {

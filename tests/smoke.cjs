@@ -61,6 +61,21 @@ step('inline edit: status via keyboard (s) is saved', async (p) => {
 	if ((await writes()) !== before + 1) throw new Error('no write reached GitLab');
 });
 
+step('inline edit: weight via keyboard (w) is saved as a number', async (p) => {
+	await open(p, '/v/my-issues');
+	await p.locator('.row .hit').first().click();
+	await p.waitForSelector('aside.detail article');
+	const before = await writes();
+	await p.keyboard.press('w');
+	await p.locator('aside.detail input[type="number"]').fill('7');
+	await p.keyboard.press('Enter');
+	for (let i = 0; i < 20 && (await writes()) === before; i++) await p.waitForTimeout(150);
+	if ((await writes()) !== before + 1) throw new Error('no write reached GitLab');
+	const ref = (await p.locator('aside.detail .ref').innerText()).trim();
+	const w = await p.evaluate(async (r) => (await (await fetch('/api/board')).json()).board.items.find((i) => i.ref === r)?.values['native:weight'], ref);
+	if (w?.value !== 7) throw new Error(`weight is ${JSON.stringify(w)}`);
+});
+
 step('a write GitLab rejects is rolled back with a toast', async (p) => {
 	await p.waitForSelector('aside.detail article');
 	const before = await p.locator('aside.detail h2').textContent();
@@ -253,6 +268,130 @@ step('the sidebar hides completely and comes back (button, tab, [ key, remembere
 	await p.locator('nav a[href="/v/my-issues"]').waitFor();
 });
 
+step('full issue page: open from the panel, links, Esc back, sub-issues, not found', async (p) => {
+	const path = () => new URL(p.url()).pathname;
+	await open(p, '/v/my-issues');
+	await p.locator('.row .hit').first().click();
+	await p.waitForSelector('aside.detail article');
+	if (new URL(p.url()).search) throw new Error(`the side panel changed the URL: ${p.url()}`);
+	// Panel → full page; the side panel stays closed for it
+	await p.click('aside.detail a[aria-label="Open as page"]');
+	await p.waitForURL(/\/issue\/\d+$/);
+	await p.waitForSelector('article.page');
+	const issueUrl = path();
+	if (await p.locator('aside.detail').count()) throw new Error('side panel shown next to the full page');
+	// Shortcuts act on the page's item: S opens the status editor in Properties
+	await p.keyboard.press('s');
+	await p.waitForSelector('aside.props [role="dialog"], aside.props [role="listbox"]');
+	await p.keyboard.press('Escape');
+	if (await p.locator('aside.detail').count()) throw new Error('S opened the side panel');
+	// The ••• menu has the item actions; the Properties column can be hidden and comes back
+	await p.click('button[title="More actions"]');
+	await p.waitForSelector('[role="dialog"] >> text=Copy ID');
+	await p.keyboard.press('Escape');
+	await p.click('button[aria-label="Hide properties"]');
+	await p.waitForSelector('aside.props', { state: 'detached' });
+	await p.click('button[aria-label="Show properties"]');
+	await p.waitForSelector('aside.props');
+	// Parent link → the parent's page; Esc goes back, twice back to the list
+	const crumb = p.locator('article.page a.crumb').first();
+	if (await crumb.count()) {
+		await crumb.click();
+		await p.waitForFunction((u) => location.pathname !== u, issueUrl);
+		await p.waitForSelector('article.page h3:has-text("Child items")');
+		if (!(await p.locator(`article.page a.child[href="${issueUrl}"]`).count())) throw new Error('parent page does not list the issue as a sub-issue');
+		await p.keyboard.press('Escape');
+		await p.waitForFunction((u) => location.pathname === u, issueUrl);
+		await p.waitForSelector('article.page a.crumb'); // the issue's page is back (the epic has no parent)
+	}
+	await p.keyboard.press('Escape');
+	await p.waitForURL('**/v/my-issues');
+	// A link opened fresh: with ?sidebar=hidden, and Esc goes home (keeping the sidebar param)
+	await open(p, issueUrl + '?sidebar=hidden');
+	await p.waitForSelector('article.page');
+	await p.waitForSelector('button[aria-label="Show sidebar"]');
+	await p.keyboard.press('Escape');
+	await p.waitForFunction((u) => location.pathname !== u, issueUrl);
+	if (new URL(p.url()).searchParams.get('sidebar') !== 'hidden') throw new Error(`?sidebar=hidden lost going home: ${p.url()}`);
+	await p.click('button[aria-label="Show sidebar"]');
+	// Unknown item; the old ?issue= param does nothing
+	await open(p, '/issue/999999');
+	await p.waitForSelector('text=Issue not found');
+	await open(p, '/v/my-issues?issue=' + issueUrl.split('/').pop());
+	await p.waitForSelector('.list .row');
+	await p.waitForTimeout(200);
+	if (await p.locator('aside.detail').count()) throw new Error('?issue= still opens the panel');
+});
+
+step("child items follow GitLab's hierarchy: epic → epic | issue, issue → task", async (p) => {
+	// An epic offers epics and issues
+	await open(p, '/epics');
+	await p.locator('a[href^="/epics/"]').first().waitFor();
+	const epicId = (await p.locator('a[href^="/epics/"]').first().getAttribute('href')).split('/').pop();
+	await open(p, `/issue/${epicId}`);
+	await p.waitForSelector('article.page');
+	await p.locator('article.page button:has-text("+ Add child item")').click();
+	const kinds = await p.locator('[role="dialog"] .menu-item').allInnerTexts();
+	if (kinds.join() !== 'Epic,Issue') throw new Error(`epic offers ${kinds}`);
+	await p.keyboard.press('Escape');
+	// An issue offers tasks: "New task" with the issue as parent, and only issues as possible parents
+	await open(p, '/v/my-issues');
+	await p.locator('.row .hit').first().click();
+	await p.click('aside.detail a[aria-label="Open as page"]');
+	await p.waitForSelector('article.page');
+	const issueId = new URL(p.url()).pathname.split('/').pop();
+	await p.locator('article.page button:has-text("+ Add task")').click();
+	await p.waitForSelector('dialog[open] >> text=New task');
+	const parent = p.locator('dialog[open] select').last();
+	if ((await parent.inputValue()) !== `gid://gitlab/WorkItem/${issueId}`) throw new Error('task not preset under its issue');
+	const epicTitle = await p.evaluate(async (id) => (await (await fetch('/api/board')).json()).board.items.find((i) => i.id.endsWith('/' + id))?.title, epicId);
+	if (epicTitle && (await parent.locator('option', { hasText: epicTitle }).count())) throw new Error('an epic is offered as a task parent');
+	await p.keyboard.press('Escape');
+	await p.waitForSelector('dialog[open]', { state: 'detached' });
+});
+
+step('?sidebar=hidden hides the sidebar and stays until you show it', async (p) => {
+	const q = () => new URL(p.url()).searchParams;
+	const has = (name, value) =>
+		p.waitForFunction(([n, v]) => {
+			const got = new URL(location.href).searchParams.get(n);
+			return v === undefined ? got === null : v === '*' ? got !== null : got === v;
+		}, [name, value]);
+	// Toggling the sidebar never writes it into the URL
+	await open(p, '/v/my-issues');
+	await p.keyboard.press('[');
+	await p.waitForSelector('button[aria-label="Show sidebar"]');
+	await p.waitForTimeout(200);
+	if (q().has('sidebar')) throw new Error('toggling the sidebar put it in the URL');
+	await p.keyboard.press('[');
+	await p.waitForSelector('button[aria-label="Hide sidebar"]');
+	// With the param: hidden, and kept through a view change (?v=) and a reload
+	await open(p, '/v/my-issues?sidebar=hidden');
+	await p.waitForSelector('button[aria-label="Show sidebar"]');
+	await p.click('button:has-text("Display")');
+	await p.click('[aria-label="Layout"] button:has-text("Board")');
+	await has('v', '*');
+	if (q().get('sidebar') !== 'hidden') throw new Error(`view change dropped ?sidebar=hidden: ${p.url()}`);
+	await p.keyboard.press('Escape'); // close the Display popover
+	await p.reload();
+	await p.waitForSelector('html[data-ready]');
+	await p.waitForSelector('button[aria-label="Show sidebar"]');
+	// The epics list writes its own query string and must keep it
+	await open(p, '/epics?sidebar=hidden');
+	await p.locator('input[type="search"], input[placeholder*="Search" i]').first().fill('x');
+	await has('q', 'x');
+	if (q().get('sidebar') !== 'hidden') throw new Error(`epics dropped ?sidebar=hidden: ${p.url()}`);
+	// Showing the sidebar yourself drops the param; hiding it again doesn't bring it back
+	await p.keyboard.press('Escape');
+	await p.click('button[aria-label="Show sidebar"]');
+	await has('sidebar', undefined);
+	await p.keyboard.press('[');
+	await p.waitForSelector('button[aria-label="Show sidebar"]');
+	await p.waitForTimeout(200);
+	if (q().has('sidebar')) throw new Error('toggling the sidebar put it back in the URL');
+	await p.keyboard.press('['); // shown again, as the steps after this expect
+});
+
 step('an old matrix share link opens as a list with a notice', async (p) => {
 	const LZ = require('lz-string');
 	const old = {
@@ -269,7 +408,15 @@ step('an old matrix share link opens as a list with a notice', async (p) => {
 step('the kiosk shows config views and cannot write', async (p, ctx, browser) => {
 	const k = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 	const kp = await k.newPage();
-	await kp.goto(BASE + '/kiosk/' + (process.env.KIOSK_KEY || 'fake-kiosk-key-0123456789abcdef'));
+	await kp.goto(BASE + '/kiosk/' + (process.env.KIOSK_KEY || 'fake-kiosk-key-0123456789abcdef') + '?sidebar=hidden');
+	await kp.waitForSelector('html[data-ready]');
+	// ?sidebar=hidden is passed through the kiosk redirect and survives a reload
+	if (new URL(kp.url()).search !== '?sidebar=hidden') throw new Error(`kiosk redirect lost ?sidebar=hidden: ${kp.url()}`);
+	await kp.waitForSelector('button[aria-label="Show sidebar"]');
+	await kp.reload();
+	await kp.waitForSelector('html[data-ready]');
+	await kp.waitForSelector('button[aria-label="Show sidebar"]');
+	await kp.click('button[aria-label="Show sidebar"]');
 	await kp.waitForSelector('text=Kiosk · read-only');
 	// KIOSK_VIEWS lists "standup" (a prioritization tool) first, so "/" opens it
 	if (process.env.KIOSK_VIEWS?.startsWith('standup')) await kp.waitForSelector('[aria-label="Eisenhower matrix"]');
@@ -308,6 +455,7 @@ step('the kiosk shows config views and cannot write', async (p, ctx, browser) =>
 		} catch (err) {
 			failed++;
 			console.log(`✗ ${s.name}: ${err.message.split('\n')[0]}`);
+			console.log(`    at ${p.url()}`);
 			await p.screenshot({ path: `smoke-failure-${steps.indexOf(s)}.png` }).catch(() => {});
 		}
 	}

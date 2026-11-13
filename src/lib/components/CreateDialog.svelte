@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getBoard } from '$lib/client/board.svelte';
 	import { getUi, type CreatePrefill } from '$lib/client/ui.svelte';
-	import { appliesTo, optionById, orderedOptions } from '$lib/fields/registry';
+	import { appliesTo, childTypesOf, optionById, orderedOptions } from '$lib/fields/registry';
 	import type { WriteValue } from '$lib/fields/apply';
 	import { prefillToWrite } from '$lib/query/edit';
 	import type { FieldKey } from '$lib/fields/types';
@@ -17,8 +17,16 @@
 	let description = $state('');
 	let projectId = $state(initial.projectId ?? board.reg.projects[0]?.id ?? '');
 	const typeNamed = (name: string) => board.reg.types.find((t) => t.name.toLowerCase() === name.toLowerCase())?.name;
-	// "New epic" asks for the Epic type; a type the group doesn't have falls back to Issue.
-	let type = $state((initial.type && typeNamed(initial.type)) || typeNamed('Issue') || board.reg.types[0]?.name || 'Issue');
+	// "New epic" asks for the Epic type; a type the group doesn't have falls back to Issue. Created
+	// under a parent ("+ Add task"), it starts as the first type GitLab allows there (Issue → Task).
+	const parentType = initial.parentId ? board.byId.get(initial.parentId)?.type : undefined;
+	let type = $state(
+		(initial.type && typeNamed(initial.type)) ||
+			(parentType && childTypesOf(board.reg, parentType)[0]) ||
+			typeNamed('Issue') ||
+			board.reg.types[0]?.name ||
+			'Issue'
+	);
 	let statusId = $state((initial.values?.['native:status'] as string | undefined) ?? '');
 	let assignee = $state((initial.values?.['native:assignees'] as string | undefined) ?? '');
 	let parentId = $state(initial.parentId ?? '');
@@ -34,14 +42,12 @@
 
 	// An epic lives in the group, not in a project. The server decides which group; this only shows it.
 	const isEpic = $derived(type.toLowerCase() === 'epic');
-	const noun = $derived(isEpic ? 'epic' : 'issue');
+	const noun = $derived(type.toLowerCase());
 	const statusField = $derived(board.field('native:status'));
 	const assigneeField = $derived(board.field('native:assignees'));
 	const parentField = $derived(board.field('native:parent'));
-	// GitLab only lets an epic sit under another epic.
-	const parentOptions = $derived(
-		(parentField?.options ?? []).filter((o) => !isEpic || board.byId.get(o.id)?.type.toLowerCase() === 'epic')
-	);
+	// GitLab's hierarchy decides the possible parents: an epic or issue under an epic, a task under an issue.
+	const parentOptions = $derived(parentField ? board.parentChoices(type, initial.parentId) : []);
 	const canAssign = $derived(!!assigneeField && appliesTo(assigneeField, type));
 	const statusOptions = $derived(statusField && appliesTo(statusField, type) ? orderedOptions(statusField) : []);
 	const extras = $derived(

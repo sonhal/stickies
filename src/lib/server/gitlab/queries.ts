@@ -28,6 +28,8 @@ export interface Capabilities {
 	iterations: boolean;
 	groupCustomFields: boolean;
 	groupWorkItemTypes: boolean;
+	/** WorkItemWidgetDefinitionHierarchy.allowedChildTypes: which types each type may hold as children */
+	hierarchyTypes: boolean;
 }
 
 export const ALL_CAPABILITIES: Capabilities = {
@@ -41,7 +43,8 @@ export const ALL_CAPABILITIES: Capabilities = {
 	rolledUpCounts: true,
 	iterations: true,
 	groupCustomFields: true,
-	groupWorkItemTypes: true
+	groupWorkItemTypes: true,
+	hierarchyTypes: true
 };
 
 /** Introspection probe. `__type` returns null for a type that doesn't exist. */
@@ -57,6 +60,7 @@ query BoardCapabilities {
   hierarchy: __type(name: "WorkItemWidgetHierarchy") { fields { name } }
   iteration: __type(name: "WorkItemWidgetIteration") { name }
   group: __type(name: "Group") { fields { name } }
+  hierarchyDef: __type(name: "WorkItemWidgetDefinitionHierarchy") { fields { name } }
 }`;
 
 interface CapsRaw {
@@ -70,6 +74,7 @@ interface CapsRaw {
 	hierarchy?: { fields?: { name: string }[] | null } | null;
 	iteration?: { name: string } | null;
 	group?: { fields?: { name: string }[] | null } | null;
+	hierarchyDef?: { fields?: { name: string }[] | null } | null;
 }
 
 /**
@@ -93,7 +98,8 @@ function fromFullSchema(raw: unknown): CapsRaw | null {
 		dateValue: type('WorkItemDateFieldValue'),
 		hierarchy: type('WorkItemWidgetHierarchy'),
 		iteration: type('WorkItemWidgetIteration'),
-		group: type('Group')
+		group: type('Group'),
+		hierarchyDef: type('WorkItemWidgetDefinitionHierarchy')
 	};
 }
 
@@ -111,7 +117,8 @@ export function parseCapabilities(raw: unknown): Capabilities {
 		rolledUpCounts: has(r.hierarchy?.fields, 'rolledUpCountsByType'),
 		iterations: !!r.iteration,
 		groupCustomFields: has(r.group?.fields, 'customFields'),
-		groupWorkItemTypes: has(r.group?.fields, 'workItemTypes')
+		groupWorkItemTypes: has(r.group?.fields, 'workItemTypes'),
+		hierarchyTypes: has(r.hierarchyDef?.fields, 'allowedChildTypes')
 	};
 }
 
@@ -221,6 +228,9 @@ ${workItemFragment(c)}`;
 // VERIFY(phase0): group.customFields(active: true) { nodes { id name fieldType active selectOptions { id value } workItemTypes { id name } } }
 //   with selectOptions in the order set in GitLab
 // VERIFY(phase0): group.workItemTypes, and WorkItemWidgetDefinitionStatus.allowedStatuses on its widgetDefinitions
+// WorkItemWidgetDefinitionHierarchy.allowedChildTypes (a connection of WorkItemType) per the GraphQL reference:
+//   GitLab's hierarchy is Epic → Epic | Issue, Issue → Task, Objective → Objective | Key result, and
+//   types are configurable, so the board reads it rather than assuming it.
 // VERIFY(phase0): group.iterations needs Premium; on Free the capability probe should leave it out
 /**
  * The group's lists the board needs for its field registry. Each is fetched page by page (review M7):
@@ -286,6 +296,15 @@ const listField = (l: SchemaList, after: boolean) =>
       nodes { ${l.nodes} }
     }`;
 
+/** Per-type definitions the board reads: allowed statuses, and allowed child types. */
+function widgetDefinitions(c: Capabilities): string {
+	const parts = [
+		c.status ? `... on WorkItemWidgetDefinitionStatus { allowedStatuses { ${statusFields(c)} } }` : '',
+		c.hierarchyTypes ? '... on WorkItemWidgetDefinitionHierarchy { allowedChildTypes { nodes { id name } } }' : ''
+	].filter(Boolean);
+	return parts.length ? `widgetDefinitions { type ${parts.join(' ')} }` : '';
+}
+
 export function schemaQuery(c: Capabilities): string {
 	return /* GraphQL */ `
 query BoardSchema($fullPath: ID!) {
@@ -300,7 +319,7 @@ query BoardSchema($fullPath: ID!) {
       nodes {
         id
         name
-        ${c.status ? `widgetDefinitions { type ... on WorkItemWidgetDefinitionStatus { allowedStatuses { ${statusFields(c)} } } }` : ''}
+        ${widgetDefinitions(c)}
       }
     }`
 				: ''

@@ -114,6 +114,36 @@ export function appliesTo(field: FieldDef, type: string): boolean {
 	return field.appliesTo.length === 0 || field.appliesTo.some((t) => norm(t) === norm(type));
 }
 
+/**
+ * GitLab's documented work item hierarchy, used when GitLab doesn't report allowedChildTypes
+ * (older versions): Epic → Epic | Issue, Issue → Task, Objective → Objective | Key Result.
+ * Tasks, key results and anything unlisted have no children.
+ * See docs.gitlab.com/user/group/epics/ and docs.gitlab.com/user/okrs/.
+ */
+const DEFAULT_CHILD_TYPES: Record<string, string[]> = {
+	epic: ['Epic', 'Issue'],
+	issue: ['Task'],
+	incident: ['Task'],
+	objective: ['Objective', 'Key Result'],
+	ticket: ['Task']
+};
+
+/**
+ * Which types an item of `parentType` may have as children, by name, limited to types the group
+ * has (so they can be created). From GitLab's allowedChildTypes when it said, else the defaults.
+ */
+export function childTypesOf(reg: FieldRegistry, parentType: string): string[] {
+	const known = reg.types.find((t) => norm(t.name) === norm(parentType));
+	const names = known?.childTypes ?? DEFAULT_CHILD_TYPES[norm(parentType)] ?? [];
+	// Only types the group has, spelled as the group spells them
+	return names.flatMap((n) => reg.types.find((t) => norm(t.name) === norm(n))?.name ?? []);
+}
+
+/** May an item of `parentType` be the parent of one of `childType`? */
+export function canParent(reg: FieldRegistry, parentType: string, childType: string): boolean {
+	return childTypesOf(reg, parentType).some((t) => norm(t) === norm(childType));
+}
+
 export function personName(reg: FieldRegistry, id: string): string {
 	return reg.people.find((p) => p.id === id)?.name ?? 'Unknown user';
 }

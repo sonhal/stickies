@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import { getBoard } from '$lib/client/board.svelte';
 	import { getUi } from '$lib/client/ui.svelte';
+	import { keepShellParams } from '$lib/client/urlState';
 	import { closedKind, optionById, orderedOptions, personName } from '$lib/fields/registry';
 	import {
 		ASSIGNEE_ME,
@@ -42,8 +43,9 @@
 
 	function push() {
 		timer = undefined;
-		const qs = epicListQuery(s);
-		if ((qs ? `?${qs}` : '') === page.url.search) return;
+		// ?sidebar=hidden rides along (from the address bar: the layout writes it there shallowly).
+		const qs = keepShellParams(epicListQuery(s), new URLSearchParams(location.search));
+		if ((qs ? `?${qs}` : '') === location.search) return;
 		writing++;
 		goto(page.url.pathname + (qs ? `?${qs}` : ''), { replaceState: true, keepFocus: true, noScroll: true }).finally(() => writing--);
 	}

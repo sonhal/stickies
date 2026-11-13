@@ -43,6 +43,7 @@
       "nodes": [
         { "id": "gid://gitlab/WorkItems::Type/1", "name": "Issue", "widgetDefinitions": [
           { "type": "ASSIGNEES" },
+          { "type": "HIERARCHY", "allowedChildTypes": { "nodes": [{ "id": "gid://gitlab/WorkItems::Type/5", "name": "Task" }] } },
           { "type": "STATUS", "allowedStatuses": [
             { "id": "gid://gitlab/WorkItems::Statuses::SystemDefined::Status/1", "name": "To do", "color": "#737278", "category": "TO_DO" },
             { "id": "gid://gitlab/WorkItems::Statuses::SystemDefined::Status/2", "name": "In progress", "color": "#1f75cb", "category": "IN_PROGRESS" },
@@ -54,12 +55,13 @@
           ] }
         ] },
         { "id": "gid://gitlab/WorkItems::Type/5", "name": "Task", "widgetDefinitions": [
+          { "type": "HIERARCHY", "allowedChildTypes": { "nodes": [] } },
           { "type": "STATUS", "allowedStatuses": [
             { "id": "gid://gitlab/WorkItems::Statuses::SystemDefined::Status/1", "name": "To do", "color": "#737278", "category": "TO_DO" },
             { "id": "gid://gitlab/WorkItems::Statuses::SystemDefined::Status/3", "name": "Done", "color": "#108548", "category": "DONE" }
           ] }
         ] },
-        { "id": "gid://gitlab/WorkItems::Type/8", "name": "Epic", "widgetDefinitions": [ { "type": "HIERARCHY" } ] }
+        { "id": "gid://gitlab/WorkItems::Type/8", "name": "Epic", "widgetDefinitions": [ { "type": "HIERARCHY", "allowedChildTypes": { "nodes": [{ "id": "gid://gitlab/WorkItems::Type/8", "name": "Epic" }, { "id": "gid://gitlab/WorkItems::Type/1", "name": "Issue" }] } } ] }
       ]
     },
     "projects": { "nodes": [

@@ -129,6 +129,11 @@ export interface ProjectRef {
 export interface WorkItemTypeDef {
 	id: string;
 	name: string;
+	/**
+	 * Names of the types this type may have as children (GitLab's allowedChildTypes), e.g. Epic →
+	 * Epic, Issue; Issue → Task; Task → none. Absent when GitLab didn't say.
+	 */
+	childTypes?: string[];
 }
 
 /** Everything the browser needs to interpret item values. Built per viewer. */

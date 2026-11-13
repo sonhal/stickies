@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
 	import { getBoard } from '$lib/client/board.svelte';
 	import { getUi } from '$lib/client/ui.svelte';
 	import { encodeView } from '$lib/client/share';
@@ -80,7 +79,8 @@
 	/** Every change to the view goes into the URL (?v=), so reload and back/forward keep it. */
 	function change(next: ViewDefinition) {
 		if (onchange) return onchange(next);
-		const url = new URL(page.url);
+		// The address bar, not page.url: ?sidebar=hidden is written there shallowly.
+		const url = new URL(location.href);
 		url.searchParams.set('v', encodeView(next));
 		goto(url.pathname + url.search, { replaceState: true, keepFocus: true, noScroll: true });
 	}

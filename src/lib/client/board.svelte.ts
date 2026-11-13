@@ -7,7 +7,7 @@ import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { applyWrite, currentWriteValue, type WriteField, type WriteValue } from '$lib/fields/apply';
 import { EpicColors } from '$lib/colors';
 import { withEpics } from '$lib/fields/epic';
-import { formatValue, optionById, resolveField, statusOption } from '$lib/fields/registry';
+import { canParent, formatValue, optionById, resolveField, statusOption } from '$lib/fields/registry';
 import type { BoardData, FieldDef, FieldKey, FieldRegistry, OptionDef, WorkItem } from '$lib/fields/types';
 import type { RankContext } from '$lib/query/rank';
 import type { ViewDefinition } from '$lib/query/types';
@@ -356,6 +356,24 @@ export class BoardState {
 
 	resolve(ref: Parameters<typeof resolveField>[1]) {
 		return resolveField(this.reg, ref);
+	}
+
+	/**
+	 * Items that an item of `childType` may sit under, following GitLab's hierarchy (Epic → Epic |
+	 * Issue, Issue → Task, as GitLab reports it): a task's parent is an issue, an issue's an epic.
+	 * `keep` (the current parent) stays in the list even when it isn't loaded, so it can be shown.
+	 */
+	parentChoices(childType: string, keep?: string | null): OptionDef[] {
+		const out: OptionDef[] = this.items
+			.filter((i) => canParent(this.reg, i.type, childType))
+			.sort((a, b) => a.title.localeCompare(b.title))
+			.map((i, n) => ({ id: i.id, label: i.title, hint: i.ref, position: n }));
+		if (keep && !out.some((o) => o.id === keep)) {
+			const f = this.fieldsByKey.get('native:parent');
+			const o = f ? optionById(f, keep) : undefined;
+			if (o) out.push({ ...o, position: out.length });
+		}
+		return out;
 	}
 }
 

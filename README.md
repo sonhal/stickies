@@ -24,6 +24,18 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   Past month / None), empty groups. Default views live in [`src/lib/views.config.ts`](src/lib/views.config.ts).
   Filters match all or any, and any filter can get alternatives ("Priority is High **or** due this week").
   Everyone can save their own views in their browser, share a view as a link, and export/import JSON.
+- **Issue pages:** every issue and epic has a full page at `/issue/<id>` (the number at the end of its
+  GitLab id; a reference like `team/api%2312` works too), laid out like Linear's issue view: a breadcrumb
+  bar with a ••• menu (Open in GitLab, Copy link, Copy ID, Delete), title, description and sub-issues, and a
+  Properties column on the right that can be hidden. Everything edits in place. **Child items** follow
+  GitLab's work item hierarchy as GitLab reports it (`allowedChildTypes`; GitLab's documented defaults on
+  older versions): an epic holds epics and issues, an issue holds tasks, a task nothing, so the page offers
+  "+ Add child item" (Epic / Issue), "+ Add task", or no button. Parent pickers only offer allowed parents. **Copy link** (side panel,
+  page, or the link icon in Properties) copies that address; ⤢ in the side panel opens it. `Esc` goes back.
+  The side panel itself is a quick look and isn't in the URL.
+- **`?sidebar=hidden`** (optional) opens the board with the sidebar hidden, e.g. for a wall screen:
+  `/kiosk/<KIOSK_KEY>?sidebar=hidden`. It isn't saved as anyone's preference, and stays in the URL through
+  kiosk rotation and reloads until someone shows the sidebar. Without it, the sidebar is as you left it.
 - **Layouts:** List, and Board (columns from any single-select field, status, people, parent or epic;
   optional swimlanes; drag to update).
 - **Prioritization:** named tools in their own sidebar section, each an instance of a *tool type*:
@@ -150,7 +162,8 @@ every request: if the access token expires within 60 s, refresh it (GitLab rotat
 
 Set `GITLAB_TOKEN` (a group access token with **`read_api` only**, Reporter role, with an expiry) and
 `KIOSK_KEY` (24+ random characters). Open `https://<your board>/kiosk/<KIOSK_KEY>` once on the screen. It
-stores a 30-day kiosk cookie and redirects to the board.
+stores a 30-day kiosk cookie and redirects to the board. Add `?sidebar=hidden` to that link for a
+full-width screen.
 
 - The kiosk is **always read-only**: write endpoints refuse kiosk sessions, and the board checks (via
   `GET /personal_access_tokens/self`) that `GITLAB_TOKEN` has exactly `read_api`; it refuses to load with

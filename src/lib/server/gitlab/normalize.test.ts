@@ -48,6 +48,7 @@ describe('capabilities', () => {
 					t('WorkItemWidgetHierarchy', ['parent', 'rolledUpCountsByType']),
 					t('WorkItemWidgetIteration'),
 					t('Group', ['id', 'customFields', 'workItemTypes']),
+					t('WorkItemWidgetDefinitionHierarchy', ['allowedChildTypes', 'allowedParentTypes']),
 					{ kind: 'SCALAR', name: 'Date', fields: null },
 					null
 				]
@@ -65,6 +66,8 @@ describe('capabilities', () => {
 		expect(frag).not.toContain('WorkItemWidgetStatus');
 		expect(frag).not.toContain('customFieldValues');
 		expect(schemaQuery(old)).not.toContain('customFields');
+		expect(schemaQuery(old)).not.toContain('allowedChildTypes');
+		expect(schemaQuery(ALL_CAPABILITIES)).toContain('allowedChildTypes');
 	});
 });
 
@@ -77,6 +80,11 @@ describe('normalizeSchema', () => {
 		expect(prio.options!.map((o) => o.label)).toEqual(['Critical', 'High', 'Medium', 'Low']);
 		expect(prio.options!.map((o) => o.position)).toEqual([0, 1, 2, 3]);
 		expect(prio.appliesTo).toEqual(['Issue', 'Task']);
+	});
+
+	it("reads each type's allowed child types (GitLab's hierarchy)", () => {
+		const byName = Object.fromEntries(reg.types.map((t) => [t.name, t.childTypes]));
+		expect(byName).toEqual({ Issue: ['Task'], Task: [], Epic: ['Epic', 'Issue'] });
 	});
 
 	it('keeps unknown custom field types as read-only text', () => {

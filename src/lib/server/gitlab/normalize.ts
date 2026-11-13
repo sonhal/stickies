@@ -120,7 +120,9 @@ export interface RawSchema {
 		workItemTypes?: Conn<{
 			id: string;
 			name: string;
-			widgetDefinitions?: { type?: string; allowedStatuses?: RawStatus[] | null }[] | null;
+			widgetDefinitions?:
+				| { type?: string; allowedStatuses?: RawStatus[] | null; allowedChildTypes?: Conn<{ id: string; name: string }> | null }[]
+				| null;
 		}> | null;
 		projects?: Conn<{ id: string; name: string; fullPath: string; webUrl?: string | null; archived?: boolean }> | null;
 		labels?: Conn<RawLabel> | null;
@@ -440,7 +442,12 @@ export function normalizeSchema(raw: RawSchema, opts: { iterations: boolean }): 
 		.map((p) => ({ id: p.fullPath, name: p.name, fullPath: p.fullPath, url: safeUrl(p.webUrl) }))
 		.sort((a, b) => a.name.localeCompare(b.name));
 
-	const types: WorkItemTypeDef[] = nodes(g?.workItemTypes).map((t) => ({ id: t.id, name: t.name }));
+	// Allowed child types, from the HIERARCHY definition. Left out when GitLab didn't say (older
+	// versions, or the field wasn't asked for): the board then falls back to GitLab's documented hierarchy.
+	const types: WorkItemTypeDef[] = nodes(g?.workItemTypes).map((t) => {
+		const h = (t.widgetDefinitions ?? []).find((d) => d?.allowedChildTypes);
+		return h ? { id: t.id, name: t.name, childTypes: nodes(h.allowedChildTypes).map((c) => c.name) } : { id: t.id, name: t.name };
+	});
 
 	// Allowed statuses: union over all types, deduped by id, in category order then GitLab order.
 	const statusOpts = new Map<string, OptionDef & { first: number }>();

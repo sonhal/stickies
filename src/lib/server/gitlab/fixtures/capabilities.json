@@ -8,5 +8,6 @@
   "dateValue": null,
   "hierarchy": { "fields": [{ "name": "parent" }, { "name": "children" }, { "name": "hasChildren" }, { "name": "rolledUpCountsByType" }] },
   "iteration": { "name": "WorkItemWidgetIteration" },
-  "group": { "fields": [{ "name": "customFields" }, { "name": "workItemTypes" }, { "name": "workItems" }, { "name": "projects" }] }
+  "group": { "fields": [{ "name": "customFields" }, { "name": "workItemTypes" }, { "name": "workItems" }, { "name": "projects" }] },
+  "hierarchyDef": { "fields": [{ "name": "allowedChildTypes" }, { "name": "allowedParentTypes" }] }
 }
