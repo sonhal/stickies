@@ -320,6 +320,21 @@ query BoardSchemaPage($fullPath: ID!, $after: String!) {
 }`;
 }
 
+/**
+ * One item's full Markdown description, for the editor. The board itself only keeps a shortened
+ * plain-text copy, which can't be edited without losing formatting.
+ */
+export const DESCRIPTION_QUERY = /* GraphQL */ `
+query BoardDescription($id: WorkItemID!) {
+  workItem(id: $id) {
+    id
+    widgets {
+      type
+      ... on WorkItemWidgetDescription { description }
+    }
+  }
+}`;
+
 // ---- Mutations (the write allowlist) ---------------------------------------------------------
 
 /**

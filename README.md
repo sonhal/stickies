@@ -31,8 +31,8 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   epic colors) and **Value vs effort** (Quick wins / Big bets / Fill-ins / Reconsider). Axes come from any
   ordered field. Instances live in [`src/lib/prioritization.config.ts`](src/lib/prioritization.config.ts);
   see [Prioritization tools](#prioritization-tools).
-- **Editing:** status, any custom field, assignees, parent epic, title, weight, start/due date, labels
-  (scoped labels stay exclusive), milestone, iteration, and *create issue* or *create epic* (in the group) pre-filled
+- **Editing:** status, any custom field, assignees, parent epic, title, description (full Markdown, in the side
+  panel), weight, start/due date, labels (scoped labels stay exclusive), milestone, iteration, and *create issue* or *create epic* (in the group) pre-filled
   from the current view.
   Changes show at once and roll back with a message if GitLab refuses them.
 - **Teams = projects, epics with progress:** the sidebar lists projects with open work and open epics;
@@ -336,9 +336,13 @@ If something differs, fix it in those three files and refresh the fixtures in
 - **Validated views** from every source (config, localStorage, URL, import) with a valibot schema and limits
   (depth, rule count, string lengths); a fuzz test throws random JSON at the parser and the query engine.
 - **On errors** the board keeps the last good data for network/5xx errors, and drops it on 401/403.
-- **No quick actions on create.** GitLab runs quick actions (`/move`, `/assign`, `/label` …) written at the
-  start of a line in a new issue's description, which would get around the board's write allowlist. The
-  server escapes them (`\/move`): the text still shows as `/move` in GitLab, but nothing runs.
+- **No quick actions in descriptions.** GitLab runs quick actions (`/move`, `/assign`, `/label` …) written at the
+  start of a line in a description it saves, which would get around the board's write allowlist. On create and on
+  edit the server escapes them (`\/move`): the text still shows as `/move` in GitLab, but nothing runs. Code
+  (fenced blocks and indented lines) is left as written, since GitLab doesn't run quick actions there.
+- **Description edits never overwrite someone else's.** The editor loads the full Markdown from GitLab and sends
+  back a hash of the text it started from; the server re-reads GitLab's text before saving and refuses (409) if it
+  changed. The editor keeps the user's text, and unsaved drafts survive switching issues (in memory only).
 - **Bounded work per description.** Only the first 20,000 characters of a description are converted to text,
   and every pattern in the converter is bounded, so a huge or hostile description (GitLab allows 1 MB) can't
   stall the server for every viewer. A test feeds it 1 MB attack strings with a time limit.

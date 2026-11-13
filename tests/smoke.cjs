@@ -96,6 +96,19 @@ step('Escape in the title editor cancels without saving (review M1)', async (p) 
 	if ((await p.locator('aside.detail h2').textContent()) !== title) throw new Error('title changed after Escape');
 });
 
+step('edit the description in the side panel: full Markdown loads, Ctrl+Enter saves', async (p) => {
+	await p.waitForSelector('aside.detail article');
+	await p.click('aside.detail button:has-text("description")');
+	const ta = p.locator('aside.detail textarea[aria-label^="Description"]');
+	await ta.waitFor();
+	const before = await writes();
+	await ta.fill(`${await ta.inputValue()}\n\nEdited by the smoke test.`);
+	await p.keyboard.press('Control+Enter');
+	await p.waitForSelector('.toast:has-text("Description saved")');
+	if ((await writes()) !== before + 1) throw new Error('description save did not reach GitLab');
+	await p.waitForSelector('aside.detail :text("Edited by the smoke test.")');
+});
+
 step('create issue (c) prefilled and opened', async (p) => {
 	const before = await writes();
 	await p.keyboard.press('Escape');

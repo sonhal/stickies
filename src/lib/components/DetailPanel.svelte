@@ -14,10 +14,12 @@
 		value?: Snippet<[FieldDef, WorkItem]>;
 		/** Title area (an inline editor in Phase 4) */
 		title?: Snippet<[WorkItem]>;
+		/** Description area: gets the item and the read-only view, e.g. to wrap it with an editor */
+		description?: Snippet<[WorkItem, Snippet]>;
 		compact?: boolean;
 	}
 
-	let { item, onclose, onopen, value, title, compact = false }: Props = $props();
+	let { item, onclose, onopen, value, title, description, compact = false }: Props = $props();
 	const board = getBoard();
 
 	/** Every field that applies to this item's type, plus any other field it has a value for. */
@@ -88,16 +90,19 @@
 		</div>
 	{/if}
 
-	<div class="desc">
-		{#each paragraphs as p, i (i)}
-			<p>{p}</p>
-		{:else}
-			<p class="muted"><em>No description.</em></p>
-		{/each}
-		{#if item.descriptionTruncated && item.url}
-			<a href={item.url} target="_blank" rel="noopener noreferrer">Read the rest in GitLab ↗</a>
-		{/if}
-	</div>
+	{#snippet readDescription()}
+		<div class="desc">
+			{#each paragraphs as p, i (i)}
+				<p>{p}</p>
+			{:else}
+				<p class="muted"><em>No description.</em></p>
+			{/each}
+			{#if item.descriptionTruncated && item.url}
+				<a href={item.url} target="_blank" rel="noopener noreferrer">Read the rest in GitLab ↗</a>
+			{/if}
+		</div>
+	{/snippet}
+	{#if description}{@render description(item, readDescription)}{:else}{@render readDescription()}{/if}
 
 	{#if children.length}
 		<section class="children">

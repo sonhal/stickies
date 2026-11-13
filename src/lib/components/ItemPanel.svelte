@@ -4,6 +4,7 @@
 	import type { WorkItem } from '$lib/fields/types';
 	import DetailPanel from './DetailPanel.svelte';
 	import FieldEditor from './FieldEditor.svelte';
+	import DescriptionEditor from './DescriptionEditor.svelte';
 
 	/** The detail panel with inline editing and a conflict notice. */
 	let { item, onclose }: { item: WorkItem; onclose: () => void } = $props();
@@ -83,6 +84,7 @@
 		{/if}
 	{/snippet}
 	{#snippet value(f, i)}<FieldEditor key={f.key} item={i} />{/snippet}
+	{#snippet description(i, read)}{#key i.id}<DescriptionEditor item={i} {read} />{/key}{/snippet}
 </DetailPanel>
 
 <style>

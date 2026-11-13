@@ -182,6 +182,56 @@ export class BoardState {
 		this.pending.delete(id);
 	}
 
+	/** The full Markdown description and its version, for the editor. */
+	async loadDescription(id: string): Promise<{ ok: true; description: string; version: string; editable: boolean } | { ok: false; error: string }> {
+		try {
+			const res = await fetch(`/api/items/description?id=${encodeURIComponent(id)}`, { headers: { accept: 'application/json' }, cache: 'no-store' });
+			const body = (await res.json().catch(() => null)) as { ok?: boolean; description?: string; version?: string; editable?: boolean; error?: string } | null;
+			if (!res.ok || !body?.ok || typeof body.description !== 'string' || typeof body.version !== 'string') {
+				return { ok: false, error: body?.error ?? `Couldn't load the description (HTTP ${res.status})` };
+			}
+			return { ok: true, description: body.description, version: body.version, editable: body.editable !== false };
+		} catch {
+			return { ok: false, error: "Couldn't reach the board server." };
+		}
+	}
+
+	/**
+	 * Save a description. Not optimistic, unlike field edits: the editor keeps the text until GitLab
+	 * has it, so a failure never loses what was typed. `baseVersion` is the version the editor
+	 * started from; the server refuses (conflict) if GitLab's text changed since. Not undoable:
+	 * undo restores values the board holds, and the board only holds a plain-text copy.
+	 */
+	async updateDescription(
+		id: string,
+		text: string,
+		baseVersion: string
+	): Promise<{ ok: true } | { ok: false; error: string; conflict: boolean }> {
+		if (!this.byId.has(id)) return { ok: false, error: 'That item is no longer on the board.', conflict: false };
+		const mySeq = ++this.seq;
+		this.begin(id);
+		try {
+			const res = await fetch('/api/items/update', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ itemId: id, field: 'description', value: text, baseVersion })
+			});
+			const body = (await res.json().catch(() => null)) as { ok: boolean; item?: WorkItem; error?: string; conflict?: boolean } | null;
+			if (!res.ok || !body?.ok || !body.item) {
+				return { ok: false, error: body?.error ?? `Couldn't save (HTTP ${res.status})`, conflict: !!body?.conflict };
+			}
+			this.ownWrites.set(id, body.item.updatedAt);
+			this.confirmed.set(id, body.item);
+			// Field edits started meanwhile are still in flight: keep showing them on top
+			this.replace(this.withNewerWrites(body.item, mySeq));
+			return { ok: true };
+		} catch {
+			return { ok: false, error: "Couldn't reach the board server. Your text has not been saved.", conflict: false };
+		} finally {
+			this.end(id);
+		}
+	}
+
 	async create(input: {
 		title: string;
 		/** Not needed for an Epic: the server creates it in the board's group */

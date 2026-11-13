@@ -267,6 +267,7 @@ function applyUpdate(input) {
 	if (typeof input.title === 'string' && input.title.includes('[reject]'))
 		return { errors: ["The resource that you are attempting to access does not exist or you don't have permission to perform this action"], workItem: null };
 	if (input.title !== undefined) raw.title = input.title;
+	if (input.descriptionWidget && typeof input.descriptionWidget.description === 'string') d.desc = input.descriptionWidget.description;
 	if (input.statusWidget) {
 		d.status = input.statusWidget.status;
 		const cat = statuses.get(d.status)?.category;
@@ -365,6 +366,10 @@ const server = createServer(async (req, res) => {
 					const more = start + v.first < all.length;
 					const conn = { pageInfo: { hasNextPage: more, endCursor: more ? String(start + v.first) : null }, nodes: page.map(render) };
 					return json(res, 200, { data: { [op === 'BoardGroupWorkItems' ? 'group' : 'project']: { workItems: conn } } });
+				}
+				case 'BoardDescription': {
+					const raw = items.get(v.id);
+					return json(res, 200, { data: { workItem: raw ? { id: raw.id, widgets: [{ type: 'DESCRIPTION', description: raw._.desc }] } : null } });
 				}
 				case 'BoardUpdateWorkItem':
 					writes++;

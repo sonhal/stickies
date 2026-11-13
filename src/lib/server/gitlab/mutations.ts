@@ -34,6 +34,8 @@ export const widgetInput = {
 	customDate: (d: string | null) => ({ dateValue: d }),
 	update: (id: string, widgets: Input): Input => ({ id, ...widgets }),
 	title: (id: string, title: string): Input => ({ id, title }),
+	/** Full Markdown text; WorkItemWidgetDescriptionInput { description } */
+	description: (id: string, text: string): Input => ({ id, descriptionWidget: { description: text } }),
 	/** VERIFY(phase0): workItemCreate takes namespacePath (project full path, or the group full path for an Epic) + workItemTypeId */
 	create: (namespacePath: string, workItemTypeId: string, title: string, description?: string): Input => ({
 		namespacePath,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { registry, selectField, item, opt, many } from '$lib/testing/factory';
 import { neutralizeQuickActions, planCreate, planUpdate } from './validate';
-import { guardWrite, originAllowed } from './guard';
+import { guardWrite, MAX_BODY_BYTES, originAllowed } from './guard';
 import { RateLimiter } from './ratelimit';
 import { mutationOutcome } from '../gitlab/mutations';
 import { prefillToWrite } from '$lib/query/edit';
@@ -179,6 +179,63 @@ describe('neutralizeQuickActions', () => {
 		expect(neutralizeQuickActions('/clone x\r\n/spend 1h\r\nok')).toBe('\\/clone x\r\n\\/spend 1h\r\nok');
 		expect(neutralizeQuickActions('a/b\nhttps://x/y')).toBe('a/b\nhttps://x/y');
 	});
+
+	it('leaves code alone: fenced blocks (``` and ~~~) and indented lines', () => {
+		const md = ['/label ~x', '```sh', '/usr/bin/env node', '```', '/move here', '~~~~', '/tmp', '```', '/still code', '~~~~', '    /indented', '/after'].join('\n');
+		expect(neutralizeQuickActions(md).split('\n')).toEqual([
+			'\\/label ~x',
+			'```sh',
+			'/usr/bin/env node',
+			'```',
+			'\\/move here',
+			'~~~~',
+			'/tmp',
+			'```',
+			'/still code',
+			'~~~~',
+			'    /indented',
+			'\\/after'
+		]);
+	});
+
+	it('a fence that is never closed covers the rest of the text, as in Markdown', () => {
+		expect(neutralizeQuickActions('```\n/a\n/b')).toBe('```\n/a\n/b');
+	});
+});
+
+describe('planUpdate: description', () => {
+	const base = 'a'.repeat(64);
+	const desc = (value: unknown, extra: Record<string, unknown> = { baseVersion: base }) =>
+		planUpdate({ itemId: issue.id, field: 'description', value, ...extra }, reg, items);
+
+	it('builds the description widget, escapes quick actions, normalizes line ends, and keeps the base version', () => {
+		const r = desc('Hello\r\n/close\r\nbye');
+		expect(r.ok && r.input).toEqual({ id: issue.id, descriptionWidget: { description: 'Hello\n\\/close\nbye' } });
+		expect(r.ok && r.baseVersion).toBe(base);
+	});
+
+	it('clears with null', () => {
+		const r = desc(null);
+		expect(r.ok && r.input).toEqual({ id: issue.id, descriptionWidget: { description: '' } });
+	});
+
+	it('refuses without a base version, with a bad one, with a non-string value, or off the board', () => {
+		expect(desc('x', {})).toMatchObject({ ok: false, status: 400 });
+		expect(desc('x', { baseVersion: 'nope' })).toMatchObject({ ok: false, status: 400 });
+		expect(desc(['x'])).toMatchObject({ ok: false, status: 400 });
+		expect(desc(5)).toMatchObject({ ok: false, status: 400 });
+		expect(planUpdate({ itemId: 'gid://gitlab/WorkItem/4242', field: 'description', value: 'x', baseVersion: base }, reg, items)).toMatchObject({ ok: false, status: 404 });
+	});
+
+	it('accepts a long description up to DESCRIPTION_MAX and refuses one beyond it', () => {
+		expect(desc('x'.repeat(100_000))).toMatchObject({ ok: true });
+		expect(desc('x'.repeat(100_001))).toMatchObject({ ok: false, status: 400 });
+	});
+
+	it('a base version on another field is not allowed to smuggle anything: it is ignored', () => {
+		const r = planUpdate({ itemId: issue.id, field: 'title', value: 'New', baseVersion: base }, reg, items);
+		expect(r.ok && r.input).toEqual({ id: issue.id, title: 'New' });
+	});
 });
 
 describe('guardWrite', () => {
@@ -204,7 +261,7 @@ describe('guardWrite', () => {
 
 	it('refuses non-JSON and oversized bodies, and no session', async () => {
 		expect(await guardWrite(req({ ...good, 'content-type': 'text/plain' }), user, 'http://board.test', new RateLimiter(60))).toMatchObject({ status: 415 });
-		expect(await guardWrite(req(good, 'x'.repeat(40_000)), user, 'http://board.test', new RateLimiter(60))).toMatchObject({ status: 413 });
+		expect(await guardWrite(req(good, 'x'.repeat(MAX_BODY_BYTES + 1)), user, 'http://board.test', new RateLimiter(60))).toMatchObject({ status: 413 });
 		expect(await guardWrite(req(good), null, 'http://board.test', new RateLimiter(60))).toMatchObject({ status: 401 });
 	});
 
