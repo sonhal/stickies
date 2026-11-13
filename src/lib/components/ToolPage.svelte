@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { page } from '$app/state';
+	import { getBoard } from '$lib/client/board.svelte';
 	import { getTools } from '$lib/client/tools-context';
+	import { findItemByParam, keepShellParams } from '$lib/client/urlState';
 	import { getUi } from '$lib/client/ui.svelte';
 	import { toolType, toView } from '$lib/prioritization/tools';
 	import type { FilterGroup } from '$lib/query/types';
@@ -15,8 +18,19 @@
 	const tools = getTools();
 	const ui = getUi();
 
-	const instance = $derived(tools.list.find((t) => t.id === toolId) ?? null);
+	const instance = $derived(tools.all.find((t) => t.id === toolId) ?? null);
 	let filter = $state<FilterGroup | null>(null);
+
+	// ?epic=<id> narrows the tool to one epic's issues (the epic page links here), e.g. to go through
+	// an epic's priorities on a team screen. Unlike the filter bar, it's in the URL, so it can be linked.
+	const board = getBoard();
+	const epicParam = $derived(page.url.searchParams.get('epic'));
+	const epic = $derived(epicParam ? findItemByParam(board.items, epicParam) : null);
+	const scope = $derived(epic ? { epics: [epic.id] } : undefined);
+	const clearEpic = $derived.by(() => {
+		const qs = keepShellParams('', page.url.searchParams);
+		return page.url.pathname + (qs ? `?${qs}` : '');
+	});
 	const view = $derived.by(() => {
 		if (!instance) return null;
 		const base = toView(instance);
@@ -29,6 +43,9 @@
 </svelte:head>
 
 {#snippet actions()}
+	{#if epic}
+		<a class="btn ghost" href={clearEpic} title="Show the tool for every epic">{epic.title} ✕</a>
+	{/if}
 	{#if filter}
 		<button type="button" class="btn ghost" onclick={() => (filter = null)} title="Back to the filter from the config">Reset filter</button>
 	{/if}
@@ -45,8 +62,9 @@
 	{#if type.renderer === 'quadrants'}
 		<Workspace
 			{view}
+			{scope}
 			heading={instance.name}
-			subheading={type.name}
+			subheading={epic ? `${type.name} · ${epic.ref}` : type.name}
 			{actions}
 			matrixDetails={details}
 			showDisplay={false}

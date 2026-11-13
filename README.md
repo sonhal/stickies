@@ -4,7 +4,7 @@ A Linear-like board for a GitLab group's work items, built with SvelteKit 2 and 
 Views show issues as a **List** or a **Board** (kanban). A separate **Prioritization** section shows them
 through prioritization frameworks: the standup **Eisenhower matrix** today, more tools later.
 Everyone signs in with their own GitLab account, sees only what GitLab lets them see, and can edit
-issues from the board. A wall screen can run a read-only **kiosk**.
+issues from the board. A wall screen can run a **kiosk**, read-only or (with `KIOSK_EDIT`) able to edit.
 
 ![List view](docs/screenshots/list-light.png)
 
@@ -104,9 +104,10 @@ effort, weight and status), to see how views and matrices look with real volume.
 | `GITLAB_OAUTH_CLIENT_ID` / `_SECRET` | | The GitLab application for user sign-in (scope **`api`**, see below). |
 | `SESSION_SECRET` | (required) | 32+ characters. Encrypts the session cookie. Changing it signs everyone out. |
 | `SESSION_MAX_AGE_DAYS` | **`1`** | How long a sign-in lasts. Short because every session holds an `api` token. |
-| `GITLAB_TOKEN`, `KIOSK_KEY` | | Kiosk screen: a **`read_api`-only** service token, and the 24+ character link key. |
+| `GITLAB_TOKEN`, `KIOSK_KEY` | | Kiosk screen: a service token (**`read_api` only**, or `api` with `KIOSK_EDIT`), and the 24+ character link key. |
+| `KIOSK_EDIT` | `false` | `true`: the kiosk can edit issues, using `GITLAB_TOKEN`, which must then have the `api` scope. |
 | `KIOSK_VIEWS` | `standup` | Comma-separated config view ids and prioritization tool ids the kiosk shows, first one first (e.g. `standup,epics`). |
-| `KIOSK_ROTATE_SECONDS` | `0` | Kiosk: switch to the next of `KIOSK_VIEWS` every N seconds. 0 = stay. |
+| `KIOSK_ROTATE_SECONDS` | `0` | Kiosk: switch to the next of `KIOSK_VIEWS` after N seconds without input (pauses while someone uses the screen). 0 = stay. |
 | `CLOSED_DAYS_MAX` | `30` | Closed items older than this aren't fetched. Caps the "Completed issues" option. |
 | `ITEMS_MAX` | `5000` | Most open items fetched (and, separately, most recently closed ones), newest-updated first. Past it the board shows a warning. Loading takes about 3 s per 100 items on first load. |
 | `CACHE_SECONDS` | `30` | Per-viewer item cache. |
@@ -158,19 +159,32 @@ every request: if the access token expires within 60 s, refresh it (GitLab rotat
 - **PKCE + state**, single-use flow cookie, no open redirects (`returnTo` only accepts same-site paths),
   fixed error messages on the sign-in page.
 
-### Wall screen: kiosk mode (read-only)
+### Wall screen: kiosk mode
 
 Set `GITLAB_TOKEN` (a group access token with **`read_api` only**, Reporter role, with an expiry) and
 `KIOSK_KEY` (24+ random characters). Open `https://<your board>/kiosk/<KIOSK_KEY>` once on the screen. It
 stores a 30-day kiosk cookie and redirects to the board. Add `?sidebar=hidden` to that link for a
 full-width screen.
 
-- The kiosk is **always read-only**: write endpoints refuse kiosk sessions, and the board checks (via
+- By default the kiosk is **read-only**: write endpoints refuse kiosk sessions, and the board checks (via
   `GET /personal_access_tokens/self`) that `GITLAB_TOKEN` has exactly `read_api`; it refuses to load with
   a broader token.
-- It shows only what `KIOSK_VIEWS` lists (default `standup`): config view ids and prioritization tool ids,
-  in that order. The first one is the kiosk's home page; it can switch between them from the sidebar and
-  rotate through them (`KIOSK_ROTATE_SECONDS`). No personal views, nothing in storage.
+- **Editing kiosk** (`KIOSK_EDIT=true`), for a team screen where you go through a prioritization or an epic
+  and update issues as you talk: the kiosk gets the same editing as a signed-in user, through the same
+  write guard (origin check, mutation allowlist, rate limit; all kiosk screens share one bucket). Edits go
+  to GitLab with `GITLAB_TOKEN`, so GitLab records them as the token's owner (for a group access token, its
+  bot user), not as the person at the screen. The token must have `api`; the board refuses one with
+  `sudo` or `admin_mode`. Give the group access token the lowest role that can edit your issues, and an
+  expiry. Anyone with the kiosk link, or at the screen, can edit while this is on.
+- Its sidebar lists what `KIOSK_VIEWS` lists (default `standup`): config view ids and prioritization tool
+  ids, in that order. The first one is the kiosk's home page; it can switch between them from the sidebar
+  and rotate through them (`KIOSK_ROTATE_SECONDS`). Links to other config views and tools, and pages built
+  on them (an epic page lists its issues through `team`), still open. No personal views, nothing in storage.
+- Rotation pauses while someone uses the screen: it moves on only after `KIOSK_ROTATE_SECONDS` with no
+  input, and never while an edit is saving, a dialog is open or someone is typing. A kiosk left on a page
+  outside the rotation (an epic, an issue) goes back to the first page after 5 minutes without input.
+- To go through an epic: open it under **Epics**, then **Prioritize → <tool>** shows that tool with only
+  the epic's issues (`/p/<tool>?epic=<id>`, a link you can bookmark or share).
 - Unset `KIOSK_KEY` to turn kiosk mode off; existing kiosk cookies stop working immediately.
 
 ## Views
@@ -367,7 +381,7 @@ If something differs, fix it in those three files and refresh the fixtures in
 - **Permission errors are recognized** whether GitLab reports them inside the mutation result or as a
   top-level GraphQL error (its usual "resource not available" shape): the user sees "You don't have
   permission" and the change is undone.
-- **Deleting** goes through the same guard as every write (signed-in user, never the kiosk, same origin,
+- **Deleting** goes through the same guard as every write (signed-in user, or the kiosk only with `KIOSK_EDIT`, same origin,
   JSON, rate limit), and the item must be on the viewer's board. The board only *offers* it when GitLab's
   `userPermissions.deleteWorkItem` is true, but that is a hint for the UI: the server always asks GitLab,
   which decides with the user's own token (a refusal shows "You don't have permission to delete this").

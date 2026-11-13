@@ -9,9 +9,10 @@ import type { Session } from '../session';
 const h = vi.hoisted(() => ({
 	graphql: vi.fn(),
 	loadBoard: vi.fn(),
-	removeCachedItem: vi.fn()
+	removeCachedItem: vi.fn(),
+	kioskEdit: false
 }));
-vi.mock('../config', () => ({ serverConfig: () => ({ writeRatePerMinute: 1000, gitlabUrl: 'http://gitlab.test' }) }));
+vi.mock('../config', () => ({ serverConfig: () => ({ writeRatePerMinute: 1000, gitlabUrl: 'http://gitlab.test', kioskEdit: h.kioskEdit }) }));
 vi.mock('../gitlab/client', async (orig) => ({ ...(await orig<typeof import('../gitlab/client')>()), graphql: h.graphql, credentialFor: () => ({ kind: 'oauth', token: 't' }) }));
 vi.mock('../gitlab/load', () => ({ loadBoard: h.loadBoard, removeCachedItem: h.removeCachedItem }));
 
@@ -109,7 +110,10 @@ describe('executeDelete', () => {
 });
 
 describe('POST /api/items/delete runs the write guard first', () => {
-	beforeEach(() => vi.clearAllMocks());
+	beforeEach(() => {
+		vi.clearAllMocks();
+		h.kioskEdit = false;
+	});
 	const call = (session: Session | null, headers: Record<string, string>) =>
 		POST({
 			request: new Request('http://board.test/api/items/delete', { method: 'POST', headers, body: JSON.stringify({ itemId: issue.id }) }),
@@ -131,5 +135,13 @@ describe('POST /api/items/delete runs the write guard first', () => {
 		h.loadBoard.mockResolvedValue({ items, registry: {}, problem: null, stale: false });
 		h.graphql.mockResolvedValue({ data: { workItemDelete: { errors: [] } }, errors: [] });
 		expect((await call(user, good)).status).toBe(200);
+	});
+
+	it('lets the kiosk through when KIOSK_EDIT is on', async () => {
+		h.kioskEdit = true;
+		h.loadBoard.mockResolvedValue({ items, registry: {}, problem: null, stale: false });
+		h.graphql.mockResolvedValue({ data: { workItemDelete: { errors: [] } }, errors: [] });
+		expect((await call(kiosk, good)).status).toBe(200);
+		expect((await call(kiosk, { ...good, origin: 'https://evil.example' })).status).toBe(403);
 	});
 });

@@ -249,8 +249,17 @@ describe('guardWrite', () => {
 		expect(r).toEqual({ ok: true, body: { a: 1 }, userKey: 'user:7' });
 	});
 
-	it('refuses the kiosk session', async () => {
+	it('refuses the kiosk session unless KIOSK_EDIT is on', async () => {
 		expect(await guardWrite(req(good), kiosk, 'http://board.test', new RateLimiter(60))).toMatchObject({ ok: false, status: 403 });
+		expect(await guardWrite(req(good), kiosk, 'http://board.test', new RateLimiter(60), false)).toMatchObject({ ok: false, status: 403 });
+		expect(await guardWrite(req(good), kiosk, 'http://board.test', new RateLimiter(60), true)).toEqual({ ok: true, body: { a: 1 }, userKey: 'kiosk' });
+	});
+
+	it('still applies the origin check and rate limit to an editing kiosk', async () => {
+		expect(await guardWrite(req({ ...good, origin: 'https://evil.example' }), kiosk, 'http://board.test', new RateLimiter(60), true)).toMatchObject({ ok: false, status: 403 });
+		const rl = new RateLimiter(2);
+		for (let i = 0; i < 2; i++) expect((await guardWrite(req(good), kiosk, 'http://board.test', rl, true)).ok).toBe(true);
+		expect(await guardWrite(req(good), kiosk, 'http://board.test', rl, true)).toMatchObject({ ok: false, status: 429 });
 	});
 
 	it('refuses a missing or foreign Origin (CSRF)', async () => {

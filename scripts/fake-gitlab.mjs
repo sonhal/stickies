@@ -5,6 +5,7 @@
  *
  *   node scripts/fake-gitlab.mjs            # listens on http://localhost:4010
  *   FAKE_GITLAB_PORT=4011 node scripts/fake-gitlab.mjs
+ *   FAKE_TOKEN_SCOPES=api node scripts/fake-gitlab.mjs   # kiosk token with api, for KIOSK_EDIT=true
  *
  * Then run the board with GITLAB_URL=http://localhost:4010 (see README → "Try it without GitLab").
  * OAuth: /oauth/authorize redirects straight back with a code (no login screen).
@@ -18,6 +19,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const fixtures = join(here, '..', 'src', 'lib', 'server', 'gitlab', 'fixtures');
 const PORT = Number(process.env.FAKE_GITLAB_PORT ?? 4010);
 const BASE = `http://localhost:${PORT}`;
+// Scopes /personal_access_tokens/self reports for GITLAB_TOKEN, e.g. FAKE_TOKEN_SCOPES=api to try KIOSK_EDIT
+const TOKEN_SCOPES = (process.env.FAKE_TOKEN_SCOPES ?? 'read_api').split(',').map((s) => s.trim()).filter(Boolean);
 const SCOPE = process.env.FAKE_GITLAB_SCOPE ?? 'api';
 
 const caps = JSON.parse(readFileSync(join(fixtures, 'capabilities.json'), 'utf8'));
@@ -362,7 +365,7 @@ const server = createServer(async (req, res) => {
 		if (url.pathname === '/oauth/revoke') return json(res, 200, {});
 		if (url.pathname === '/api/v4/user') return json(res, 200, { id: 101, username: 'alex', name: 'Alex Example' });
 		if (url.pathname === '/api/v4/version') return json(res, 200, { version: '18.6.0-fake', revision: 'fake' });
-		if (url.pathname === '/api/v4/personal_access_tokens/self') return json(res, 200, { scopes: ['read_api'] });
+		if (url.pathname === '/api/v4/personal_access_tokens/self') return json(res, 200, { scopes: TOKEN_SCOPES });
 		if (url.pathname === '/__writes') return json(res, 200, { writes });
 		if (url.pathname === '/api/graphql' && req.method === 'POST') {
 			const body = JSON.parse(await readBody(req));

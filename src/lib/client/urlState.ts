@@ -4,6 +4,7 @@
  * - `/issue/<id>`: an issue's (or epic's) full page. The id is the number at the end of the GitLab
  *   global id (gid://gitlab/WorkItem/123 → 123), like `/epics/<id>`. A full reference
  *   (`my-team/api#12`, or `my-group&3` for an epic) is accepted too, for hand-written links.
+ * - `/p/<tool>?epic=<id>`: a prioritization tool with only that epic's issues (linked from the epic page).
  * - `?sidebar=hidden`: opens with the sidebar hidden, e.g. on a kiosk screen. Optional: without it
  *   the sidebar is as you left it. It isn't saved as your preference, and it stays in the URL
  *   (so a reload keeps it) until you show the sidebar yourself.
