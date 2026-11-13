@@ -12,6 +12,7 @@ import { mutationOutcome } from '../gitlab/mutations';
 import type { RawWorkItem } from '../gitlab/normalize';
 import { createWorkItemMutation, updateWorkItemMutation } from '../gitlab/queries';
 import { planCreate, planUpdate } from './validate';
+import { descriptionVersion, fetchDescription } from './description';
 
 interface Payload {
 	errors?: string[] | null;
@@ -57,13 +58,29 @@ export async function executeUpdate(session: Session, body: unknown) {
 	if (board.problem && !board.stale) return reply({ ok: false, error: board.problem.message }, 503);
 	const plan = planUpdate(body, board.registry, board.items);
 	if (!plan.ok) return reply({ ok: false, error: plan.error }, plan.status);
+	if (plan.baseVersion) {
+		// Don't save over a description someone changed after this editor loaded it
+		try {
+			const current = await fetchDescription(session, plan.item.id);
+			if (descriptionVersion(current) !== plan.baseVersion) {
+				return json(
+					{ ok: false, conflict: true, error: 'Someone changed this description in GitLab while you were editing. Your text has not been saved.' },
+					{ status: 409, headers: { 'cache-control': 'no-store' } }
+				);
+			}
+		} catch (err) {
+			if (err instanceof GitLabError) return reply({ ok: false, error: err.message }, [401, 403, 404].includes(err.status) ? err.status : 502);
+			throw err;
+		}
+	}
 	return run(session, 'update', plan.input);
 }
 
 export async function executeCreate(session: Session, body: unknown) {
 	const board = await loadBoard(session);
 	if (board.problem && !board.stale) return reply({ ok: false, error: board.problem.message }, 503);
-	const plan = planCreate(body, board.registry, board.items);
+	// The group path comes from the loaded board (GITLAB_GROUP resolved to a path), never from the request.
+	const plan = planCreate(body, board.registry, board.items, board.groupLabel);
 	if (!plan.ok) return reply({ ok: false, error: plan.error }, plan.status);
 	return run(session, 'create', plan.input);
 }

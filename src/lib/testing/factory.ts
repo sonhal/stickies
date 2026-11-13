@@ -102,6 +102,7 @@ export function item(values: Partial<Record<string, FieldValue>> = {}, extra: Pa
 		projectId: 'g/api',
 		parentId: null,
 		progress: null,
+		canDelete: false,
 		...extra,
 		values: { 'native:type': { kind: 'option', id: type }, ...values } as WorkItem['values']
 	};

@@ -15,10 +15,11 @@ import { mergeWidgets, widgetInput as W } from '../gitlab/mutations';
 
 export const TITLE_MAX = 255;
 export const TEXT_MAX = 1024;
-export const DESCRIPTION_MAX = 20_000;
+/** GitLab allows ~1 MB; the board edits descriptions up to this size and sends longer ones to GitLab. */
+export const DESCRIPTION_MAX = 100_000;
 
 const ItemId = v.pipe(v.string(), v.maxLength(120), v.regex(/^gid:\/\/gitlab\/WorkItem\/\d+$/));
-const FieldName = v.pipe(v.string(), v.maxLength(80), v.regex(/^(title|native:[A-Za-z]+|custom:\d+)$/));
+const FieldName = v.pipe(v.string(), v.maxLength(80), v.regex(/^(title|description|native:[A-Za-z]+|custom:\d+)$/));
 const Value = v.union([
 	v.null(),
 	v.pipe(v.string(), v.maxLength(DESCRIPTION_MAX)),
@@ -26,12 +27,15 @@ const Value = v.union([
 	v.pipe(v.array(v.pipe(v.string(), v.maxLength(200))), v.maxLength(50))
 ]);
 
-const UpdateSchema = v.strictObject({ itemId: ItemId, field: FieldName, value: Value });
+/** sha256 hex of the description the editor started from: see descriptionVersion() */
+export const Version = v.pipe(v.string(), v.regex(/^[0-9a-f]{64}$/));
+const UpdateSchema = v.strictObject({ itemId: ItemId, field: FieldName, value: Value, baseVersion: v.optional(Version) });
 
 const CreateSchema = v.strictObject({
 	title: v.string(),
 	description: v.optional(v.pipe(v.string(), v.maxLength(DESCRIPTION_MAX))),
-	projectId: v.pipe(v.string(), v.maxLength(300)),
+	// Optional here because an Epic has no project; planCreate requires it for every other type.
+	projectId: v.optional(v.pipe(v.string(), v.maxLength(300))),
 	type: v.optional(v.pipe(v.string(), v.maxLength(60))),
 	parentId: v.optional(v.nullable(ItemId)),
 	values: v.optional(v.pipe(v.record(FieldName, Value), v.check((r) => Object.keys(r).length <= 30, 'Too many values')))
@@ -180,6 +184,8 @@ export interface UpdatePlan {
 	item: WorkItem;
 	field: FieldDef | null;
 	input: Record<string, unknown>;
+	/** Description edits only: the version the editor started from */
+	baseVersion?: string;
 }
 
 export function planUpdate(raw: unknown, reg: FieldRegistry, items: WorkItem[]): UpdatePlan | WriteError {
@@ -194,6 +200,20 @@ export function planUpdate(raw: unknown, reg: FieldRegistry, items: WorkItem[]):
 		const t = checkTitle(value);
 		return t.ok ? { ok: true, item, field: null, input: W.title(item.id, t.title) } : t;
 	}
+	if (key === 'description') {
+		// The editor must say which description it started from, so the server can refuse to
+		// overwrite someone else's newer text (see executeUpdate).
+		if (!parsed.output.baseVersion) return fail('Reload the description and try again');
+		if (value !== null && typeof value !== 'string') return fail('The description must be text');
+		const text = (value ?? '').replace(/\r\n?/g, '\n');
+		return {
+			ok: true,
+			item,
+			field: null,
+			input: W.description(item.id, neutralizeQuickActions(text)),
+			baseVersion: parsed.output.baseVersion
+		};
+	}
 	const f = checkField(reg, key, item.type);
 	if (!f.ok) return f;
 	const w = widgetFor(reg, byId, item, f.field, value, 'update');
@@ -206,21 +226,37 @@ export interface CreatePlan {
 	input: Record<string, unknown>;
 }
 
-export function planCreate(raw: unknown, reg: FieldRegistry, items: WorkItem[]): CreatePlan | WriteError {
+/**
+ * `groupPath` is the board's group full path, resolved by the server (never sent by the browser).
+ * An Epic is created in that group; every other type is created in one of the group's projects.
+ */
+export function planCreate(raw: unknown, reg: FieldRegistry, items: WorkItem[], groupPath: string): CreatePlan | WriteError {
 	const parsed = v.safeParse(CreateSchema, raw);
 	if (!parsed.success) return fail('Invalid request');
 	const c = parsed.output;
 	const t = checkTitle(c.title);
 	if (!t.ok) return t;
-	const project = reg.projects.find((p) => p.id === c.projectId);
-	if (!project) return fail('Pick one of the group’s projects');
 	const typeName = c.type ?? 'Issue';
 	const type = reg.types.find((x) => x.name.toLowerCase() === typeName.toLowerCase());
 	if (!type) return fail(`Unknown work item type "${typeName}"`);
+	const isEpic = type.name.toLowerCase() === 'epic';
 	const byId = new Map(items.map((i) => [i.id, i]));
 
+	let namespacePath: string;
+	if (isEpic) {
+		// A project sent along with an epic is ignored: the epic always goes to the board's group.
+		if (!groupPath) return fail('The group is not known yet. Reload the board and try again.');
+		namespacePath = groupPath;
+		// GitLab only lets an epic sit under another epic.
+		if (c.parentId && byId.get(c.parentId)?.type.toLowerCase() !== 'epic') return fail('The parent of an epic must be an epic on the board');
+	} else {
+		const project = reg.projects.find((p) => p.id === c.projectId);
+		if (!project) return fail('Pick one of the group’s projects');
+		namespacePath = project.fullPath;
+	}
+
 	const description = c.description?.trim() ? neutralizeQuickActions(c.description) : undefined;
-	const input: Record<string, unknown> = W.create(project.fullPath, type.id, t.title, description);
+	const input: Record<string, unknown> = W.create(namespacePath, type.id, t.title, description);
 
 	const values: Record<string, WriteValue> = { ...(c.values ?? {}) };
 	if (c.parentId) values['native:parent'] = c.parentId;
@@ -239,11 +275,28 @@ export { labelScope };
 
 /**
  * GitLab runs quick actions (`/move`, `/assign`, `/label`, `/clone` …) written at the start of a line
- * in a new issue's description. That would let a create request do things the board's mutation
+ * in a description it saves. That would let a create or edit do things the board's mutation
  * allowlist forbids, such as moving the issue out of the group (review M4). Escaping the slash
  * (`\/move`) stops GitLab from running it, and Markdown still displays it as `/move`.
- * Lines indented 4+ spaces are code blocks, which GitLab doesn't interpret, so they're left alone.
+ * Code is left alone: GitLab doesn't run quick actions in code, and inside a code block the
+ * backslash would show. That covers fenced blocks (``` or ~~~) and lines indented 4+ spaces.
  */
 export function neutralizeQuickActions(text: string): string {
-	return text.replace(/^( {0,3})\//gm, '$1\\/');
+	let fence: { char: string; len: number } | null = null;
+	return text
+		.split(/(?<=\n)/)
+		.map((line) => {
+			const m = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+			if (fence) {
+				// A fence closes on a line of the same character, at least as long, with nothing after it
+				if (m && m[1][0] === fence.char && m[1].length >= fence.len && /^ {0,3}[`~]+[ \t]*\r?\n?$/.test(line)) fence = null;
+				return line;
+			}
+			if (m) {
+				fence = { char: m[1][0], len: m[1].length };
+				return line;
+			}
+			return line.replace(/^( {0,3})\//, '$1\\/');
+		})
+		.join('');
 }

@@ -96,6 +96,19 @@ step('Escape in the title editor cancels without saving (review M1)', async (p) 
 	if ((await p.locator('aside.detail h2').textContent()) !== title) throw new Error('title changed after Escape');
 });
 
+step('edit the description in the side panel: full Markdown loads, Ctrl+Enter saves', async (p) => {
+	await p.waitForSelector('aside.detail article');
+	await p.click('aside.detail button:has-text("description")');
+	const ta = p.locator('aside.detail textarea[aria-label^="Description"]');
+	await ta.waitFor();
+	const before = await writes();
+	await ta.fill(`${await ta.inputValue()}\n\nEdited by the smoke test.`);
+	await p.keyboard.press('Control+Enter');
+	await p.waitForSelector('.toast:has-text("Description saved")');
+	if ((await writes()) !== before + 1) throw new Error('description save did not reach GitLab');
+	await p.waitForSelector('aside.detail :text("Edited by the smoke test.")');
+});
+
 step('create issue (c) prefilled and opened', async (p) => {
 	const before = await writes();
 	await p.keyboard.press('Escape');
@@ -106,6 +119,41 @@ step('create issue (c) prefilled and opened', async (p) => {
 	await p.click('dialog.create button.primary');
 	await p.waitForSelector('.toast:has-text("Created")');
 	if ((await writes()) !== before + 1) throw new Error('create did not reach GitLab');
+});
+
+step('delete: Cancel and Esc in the confirmation delete nothing', async (p) => {
+	// The issue created in the previous step is open in the panel.
+	await p.waitForSelector('aside.detail h2:has-text("Created by the smoke test")');
+	const before = await writes();
+	await p.click('aside.detail button:has-text("Delete issue…")');
+	await p.waitForSelector('[role="alertdialog"]:has-text("can\'t be undone")');
+	const focused = await p.evaluate(() => document.activeElement?.textContent?.trim());
+	if (focused !== 'Cancel') throw new Error(`focus starts on "${focused}", not Cancel`);
+	await p.click('[role="alertdialog"] button:has-text("Cancel")');
+	await p.waitForSelector('[role="alertdialog"]', { state: 'detached' });
+	await p.click('aside.detail button:has-text("Delete issue…")');
+	await p.waitForSelector('[role="alertdialog"]');
+	await p.keyboard.press('Escape');
+	await p.waitForSelector('[role="alertdialog"]', { state: 'detached' });
+	await p.waitForTimeout(300);
+	if ((await writes()) !== before) throw new Error('cancelling sent a write to GitLab');
+	await p.waitForSelector('aside.detail h2:has-text("Created by the smoke test")');
+});
+
+step('delete an issue through the panel’s confirmation', async (p) => {
+	const before = await writes();
+	await p.click('aside.detail button:has-text("Delete issue…")');
+	await p.click('[role="alertdialog"] button.danger');
+	await p.waitForSelector('.toast:has-text("Deleted")');
+	await p.waitForSelector('[role="alertdialog"]', { state: 'detached' });
+	if (await p.locator('aside.detail').count()) throw new Error('the panel of the deleted issue is still open');
+	if (await p.locator('text=Created by the smoke test').count()) throw new Error('the deleted issue is still on the board');
+	if ((await writes()) !== before + 1) throw new Error('delete did not reach GitLab once');
+	// Not back after a reload either: GitLab (and the server cache) no longer have it.
+	await p.reload();
+	await p.waitForSelector('html[data-ready]');
+	await p.waitForSelector('.list .row');
+	if (await p.locator('text=Created by the smoke test').count()) throw new Error('the deleted issue came back after a reload');
 });
 
 step('board: drag a card to another column saves the status', async (p) => {
@@ -231,6 +279,11 @@ step('the kiosk shows config views and cannot write', async (p, ctx, browser) =>
 		data: { itemId: 'gid://gitlab/WorkItem/2000', field: 'native:weight', value: 1 }
 	});
 	if (res.status() !== 403) throw new Error(`kiosk write got ${res.status()}`);
+	const del = await kp.request.post(BASE + '/api/items/delete', {
+		headers: { origin: BASE, 'content-type': 'application/json' },
+		data: { itemId: 'gid://gitlab/WorkItem/2000' }
+	});
+	if (del.status() !== 403) throw new Error(`kiosk delete got ${del.status()}`);
 	await k.close();
 });
 

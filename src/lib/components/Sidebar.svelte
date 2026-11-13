@@ -161,6 +161,7 @@
 		{:else if viewer?.kind === 'kiosk'}
 			<span class="who" title="Signed in as the kiosk screen (read-only service token)">Kiosk · read-only</span>
 		{/if}
+		<button type="button" class="btn ghost small" onclick={() => (ui.shortcutsOpen = true)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
 	</div>
 </nav>
 

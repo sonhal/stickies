@@ -13,6 +13,9 @@ import type { RankContext } from '$lib/query/rank';
 import type { ViewDefinition } from '$lib/query/types';
 import { settings } from '$lib/views.config';
 
+/** How many changes Ctrl/Cmd+Z can take back */
+const UNDO_MAX = 20;
+
 export class BoardState {
 	data = $state<BoardData>() as BoardData;
 	items = $state<WorkItem[]>([]);
@@ -25,6 +28,11 @@ export class BoardState {
 	private seq = 0;
 	/** The item as GitLab last confirmed it (load, refresh or a successful write): rollback target */
 	private confirmed = new Map<string, WorkItem>();
+	/**
+	 * Field changes made from this tab (saved, or still saving), oldest first, with the value that
+	 * takes each back. Writing the value that is already there is not a step.
+	 */
+	private undoStack: { id: string; key: WriteField; previous: WriteValue; ref: string }[] = [];
 
 	reg: FieldRegistry = $derived(this.data.registry);
 	byId: Map<string, WorkItem> = $derived(new Map(this.items.map((i) => [i.id, i])));
@@ -46,6 +54,7 @@ export class BoardState {
 	}
 
 	setData(data: BoardData) {
+		if (this.removed.size) data = { ...data, items: data.items.filter((i) => !this.removed.has(i.id)) };
 		this.data = data;
 		for (const i of data.items) if (!this.pending.has(i.id)) this.confirmed.set(i.id, i);
 		// Keep optimistic values for items with a write still in flight.
@@ -70,8 +79,43 @@ export class BoardState {
 	 * value. Newer writes to other fields of the same item are re-applied on top of a response.
 	 */
 	async update(id: string, key: WriteField, value: WriteValue): Promise<boolean> {
+		return this.write(id, key, value, true);
+	}
+
+	/**
+	 * Take back the last change that was saved from this tab (Ctrl/Cmd+Z): writes the field's
+	 * previous value. Says what happened in a toast. The undo itself is not remembered, so a second
+	 * undo goes one change further back instead of redoing.
+	 */
+	async undo(): Promise<boolean> {
+		let entry = this.undoStack.pop();
+		// Skip changes to items that are no longer loaded (closed long ago, moved out of the group).
+		while (entry && !this.byId.has(entry.id)) entry = this.undoStack.pop();
+		if (!entry) {
+			this.notify('Nothing to undo');
+			return false;
+		}
+		const ok = await this.write(entry.id, entry.key, entry.previous, false);
+		if (ok) this.notify(`Undone: ${entry.ref}`);
+		// Not saved (write() said why): keep it, so undo can be tried again.
+		else this.undoStack.push(entry);
+		return ok;
+	}
+
+	private async write(id: string, key: WriteField, value: WriteValue, undoable: boolean): Promise<boolean> {
 		const before = this.byId.get(id);
 		if (!before) return false;
+		// Remembered at once, not when GitLab answers: Ctrl+Z right after a change takes back that
+		// change even while it is still saving. Dropped again if the save fails.
+		const previous = currentWriteValue(before, key);
+		const undoEntry = undoable && JSON.stringify(previous) !== JSON.stringify(value) ? { id, key, previous, ref: before.ref } : null;
+		if (undoEntry) {
+			this.undoStack.push(undoEntry);
+			if (this.undoStack.length > UNDO_MAX) this.undoStack.shift();
+		}
+		const forget = () => {
+			if (undoEntry) this.undoStack = this.undoStack.filter((u) => u !== undoEntry);
+		};
 		const field = key === 'title' ? null : (this.fieldsByKey.get(key) ?? null);
 		const slot = `${id}\u0000${key}`;
 		const mySeq = ++this.seq;
@@ -96,6 +140,7 @@ export class BoardState {
 			const body = (await res.json().catch(() => null)) as { ok: boolean; item?: WorkItem; error?: string } | null;
 			if (!res.ok || !body?.ok || !body.item) {
 				rollback();
+				forget();
 				this.notify(body?.error ?? `Couldn't save (HTTP ${res.status})`, 'error');
 				return false;
 			}
@@ -108,6 +153,7 @@ export class BoardState {
 			return true;
 		} catch {
 			rollback();
+			forget();
 			this.notify("Couldn't reach the board server. Your change was undone.", 'error');
 			return false;
 		} finally {
@@ -137,9 +183,60 @@ export class BoardState {
 		this.pending.delete(id);
 	}
 
+	/** The full Markdown description and its version, for the editor. */
+	async loadDescription(id: string): Promise<{ ok: true; description: string; version: string; editable: boolean } | { ok: false; error: string }> {
+		try {
+			const res = await fetch(`/api/items/description?id=${encodeURIComponent(id)}`, { headers: { accept: 'application/json' }, cache: 'no-store' });
+			const body = (await res.json().catch(() => null)) as { ok?: boolean; description?: string; version?: string; editable?: boolean; error?: string } | null;
+			if (!res.ok || !body?.ok || typeof body.description !== 'string' || typeof body.version !== 'string') {
+				return { ok: false, error: body?.error ?? `Couldn't load the description (HTTP ${res.status})` };
+			}
+			return { ok: true, description: body.description, version: body.version, editable: body.editable !== false };
+		} catch {
+			return { ok: false, error: "Couldn't reach the board server." };
+		}
+	}
+
+	/**
+	 * Save a description. Not optimistic, unlike field edits: the editor keeps the text until GitLab
+	 * has it, so a failure never loses what was typed. `baseVersion` is the version the editor
+	 * started from; the server refuses (conflict) if GitLab's text changed since. Not undoable:
+	 * undo restores values the board holds, and the board only holds a plain-text copy.
+	 */
+	async updateDescription(
+		id: string,
+		text: string,
+		baseVersion: string
+	): Promise<{ ok: true } | { ok: false; error: string; conflict: boolean }> {
+		if (!this.byId.has(id)) return { ok: false, error: 'That item is no longer on the board.', conflict: false };
+		const mySeq = ++this.seq;
+		this.begin(id);
+		try {
+			const res = await fetch('/api/items/update', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ itemId: id, field: 'description', value: text, baseVersion })
+			});
+			const body = (await res.json().catch(() => null)) as { ok: boolean; item?: WorkItem; error?: string; conflict?: boolean } | null;
+			if (!res.ok || !body?.ok || !body.item) {
+				return { ok: false, error: body?.error ?? `Couldn't save (HTTP ${res.status})`, conflict: !!body?.conflict };
+			}
+			this.ownWrites.set(id, body.item.updatedAt);
+			this.confirmed.set(id, body.item);
+			// Field edits started meanwhile are still in flight: keep showing them on top
+			this.replace(this.withNewerWrites(body.item, mySeq));
+			return { ok: true };
+		} catch {
+			return { ok: false, error: "Couldn't reach the board server. Your text has not been saved.", conflict: false };
+		} finally {
+			this.end(id);
+		}
+	}
+
 	async create(input: {
 		title: string;
-		projectId: string;
+		/** Not needed for an Epic: the server creates it in the board's group */
+		projectId?: string;
 		type?: string;
 		parentId?: string | null;
 		description?: string;
@@ -153,7 +250,8 @@ export class BoardState {
 			});
 			const body = (await res.json().catch(() => null)) as { ok: boolean; item?: WorkItem; error?: string } | null;
 			if (!res.ok || !body?.ok || !body.item) {
-				this.notify(body?.error ?? `Couldn't create the issue (HTTP ${res.status})`, 'error');
+				const what = input.type?.toLowerCase() === 'epic' ? 'epic' : 'issue';
+				this.notify(body?.error ?? `Couldn't create the ${what} (HTTP ${res.status})`, 'error');
 				return null;
 			}
 			this.ownWrites.set(body.item.id, body.item.updatedAt);
@@ -164,6 +262,70 @@ export class BoardState {
 			this.notify("Couldn't reach the board server.", 'error');
 			return null;
 		}
+	}
+
+	/**
+	 * Delete an item in GitLab. Not optimistic, unlike `update`: a delete can't be taken back, so
+	 * the item stays on screen (drawn as pending) until GitLab confirms, and stays put if it refuses.
+	 * Not undoable either: nothing goes on the undo stack, and the item's earlier changes leave it.
+	 * Only ever called after the user confirmed (ConfirmDialog).
+	 */
+	async remove(id: string): Promise<boolean> {
+		const it = this.byId.get(id);
+		if (!it) return false;
+		this.begin(id);
+		try {
+			const res = await fetch('/api/items/delete', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ itemId: id })
+			});
+			const body = (await res.json().catch(() => null)) as { ok: boolean; error?: string } | null;
+			if (!res.ok || !body?.ok) {
+				this.notify(body?.error ?? `Couldn't delete ${it.ref} (HTTP ${res.status})`, 'error');
+				return false;
+			}
+			this.forgetItem(id);
+			this.onremove(id);
+			this.notify(`Deleted ${it.ref}`);
+			return true;
+		} catch {
+			this.notify(`Couldn't reach the board server. ${it.ref} was not deleted.`, 'error');
+			return false;
+		} finally {
+			this.end(id);
+		}
+	}
+
+	/** Set by the shell: a deleted item must stop being selected */
+	onremove: (id: string) => void = () => {};
+	/** Deleted from this tab: a refresh that was already on its way must not bring them back */
+	private removed = new Set<string>();
+
+	private forgetItem(id: string) {
+		this.removed.add(id);
+		this.undoStack = this.undoStack.filter((u) => u.id !== id);
+		this.confirmed.delete(id);
+		this.ownWrites.delete(id);
+		for (const [slot, w] of this.latest) if (w.id === id) this.latest.delete(slot);
+		// GitLab drops the parent links with the parent: its sub-items stay, without a parent. Also
+		// in `confirmed`, so a failed edit on a sub-item can't roll its parent back.
+		const orphan = (x: WorkItem): WorkItem => {
+			const values = { ...x.values };
+			delete values['native:parent'];
+			return { ...x, parentId: null, values };
+		};
+		for (const [cid, c] of this.confirmed) if (c.parentId === id) this.confirmed.set(cid, orphan(c));
+		const items = this.items.filter((x) => x.id !== id).map((x) => (x.parentId === id ? orphan(x) : x));
+		// Nor is it offered as a parent or epic any more.
+		const reg = this.data.registry;
+		const fields = reg.fields.map((f) =>
+			(f.key === 'native:parent' || f.key === 'native:epic') && f.options?.some((o) => o.id === id)
+				? { ...f, options: f.options.filter((o) => o.id !== id) }
+				: f
+		);
+		this.data = { ...this.data, items: this.data.items.filter((x) => x.id !== id), registry: { ...reg, fields } };
+		this.items = withEpics(items, this.data.registry);
 	}
 
 	field(key: FieldKey): FieldDef | undefined {

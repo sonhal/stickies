@@ -9,7 +9,8 @@
 import type { Session } from '../session';
 import { RateLimiter } from './ratelimit';
 
-export const MAX_BODY_BYTES = 32_768;
+/** Room for a description of DESCRIPTION_MAX characters, JSON-escaped */
+export const MAX_BODY_BYTES = 262_144;
 
 export type GuardResult = { ok: true; body: unknown; userKey: string } | { ok: false; status: number; error: string };
 

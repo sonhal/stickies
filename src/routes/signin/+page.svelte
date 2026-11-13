@@ -6,12 +6,12 @@
 </script>
 
 <svelte:head>
-	<title>Sign in · Standup matrix</title>
+	<title>Sign in · Board</title>
 </svelte:head>
 
 <main>
 	<section class="card">
-		<h1>Standup matrix</h1>
+		<h1>Board</h1>
 		{#if data.signedOut}
 			<p class="info">You're signed out.</p>
 		{/if}

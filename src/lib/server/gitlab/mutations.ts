@@ -34,7 +34,9 @@ export const widgetInput = {
 	customDate: (d: string | null) => ({ dateValue: d }),
 	update: (id: string, widgets: Input): Input => ({ id, ...widgets }),
 	title: (id: string, title: string): Input => ({ id, title }),
-	/** VERIFY(phase0): workItemCreate takes namespacePath (project full path) + workItemTypeId */
+	/** Full Markdown text; WorkItemWidgetDescriptionInput { description } */
+	description: (id: string, text: string): Input => ({ id, descriptionWidget: { description: text } }),
+	/** VERIFY(phase0): workItemCreate takes namespacePath (project full path, or the group full path for an Epic) + workItemTypeId */
 	create: (namespacePath: string, workItemTypeId: string, title: string, description?: string): Input => ({
 		namespacePath,
 		workItemTypeId,
@@ -78,6 +80,26 @@ export function mutationOutcome<W>(
 		ok: false,
 		status: PERMISSION.test(errors.join(' ')) ? 403 : 422,
 		error: friendlyMutationError(errors),
+		log: errors.join(' | ')
+	};
+}
+
+/**
+ * Like mutationOutcome, for workItemDelete: its payload has no work item, so success is a payload
+ * with no errors. A null payload with a top-level error (ResourceNotAvailable) is "no permission".
+ */
+export function deleteOutcome(
+	payload: { errors?: (string | null)[] | null } | null | undefined,
+	topLevelErrors: string[]
+): { ok: true } | { ok: false; status: 403 | 422; error: string; log: string } {
+	const own = (payload?.errors ?? []).filter((e): e is string => !!e);
+	if (payload && !own.length && !topLevelErrors.length) return { ok: true };
+	const errors = own.length ? own : topLevelErrors.length ? topLevelErrors : ['no answer from workItemDelete'];
+	const denied = PERMISSION.test(errors.join(' '));
+	return {
+		ok: false,
+		status: denied ? 403 : 422,
+		error: denied ? "You don't have permission to delete this in GitLab." : `GitLab didn't delete it: ${errors.join(' ').slice(0, 200)}`,
 		log: errors.join(' | ')
 	};
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { registry, selectField, item, opt, many } from '$lib/testing/factory';
 import { neutralizeQuickActions, planCreate, planUpdate } from './validate';
-import { guardWrite, originAllowed } from './guard';
+import { guardWrite, MAX_BODY_BYTES, originAllowed } from './guard';
 import { RateLimiter } from './ratelimit';
 import { mutationOutcome } from '../gitlab/mutations';
 import { prefillToWrite } from '$lib/query/edit';
@@ -97,7 +97,8 @@ describe('planCreate', () => {
 		const r = planCreate(
 			{ title: 'New', projectId: 'g/web', parentId: epic.id, values: { 'native:status': 's-todo', 'custom:7': prio.options![0].id, 'native:labels': ['l-bug'] } },
 			reg,
-			items
+			items,
+			'g'
 		);
 		expect(r.ok && r.input).toEqual({
 			namespacePath: 'g/web',
@@ -111,18 +112,65 @@ describe('planCreate', () => {
 	});
 
 	it('refuses unknown projects, types, fields and bad titles', () => {
-		expect(planCreate({ title: 'x', projectId: 'other/project' }, reg, items)).toMatchObject({ ok: false });
-		expect(planCreate({ title: 'x', projectId: 'g/web', type: 'Incident' }, reg, items)).toMatchObject({ ok: false });
-		expect(planCreate({ title: '', projectId: 'g/web' }, reg, items)).toMatchObject({ ok: false });
-		expect(planCreate({ title: 'x', projectId: 'g/web', type: 'Task', values: { 'custom:7': prio.options![0].id } }, reg, items)).toMatchObject({ ok: false });
+		expect(planCreate({ title: 'x', projectId: 'other/project' }, reg, items, 'g')).toMatchObject({ ok: false });
+		expect(planCreate({ title: 'x', projectId: 'g/web', type: 'Incident' }, reg, items, 'g')).toMatchObject({ ok: false });
+		expect(planCreate({ title: '', projectId: 'g/web' }, reg, items, 'g')).toMatchObject({ ok: false });
+		expect(planCreate({ title: 'x', projectId: 'g/web', type: 'Task', values: { 'custom:7': prio.options![0].id } }, reg, items, 'g')).toMatchObject({ ok: false });
 	});
 
 	it('escapes quick actions in the description so GitLab does not run them (review M4)', () => {
 		const description = '/move other-group/secret-project\nSome text\n  /assign @someone\n    /label ~in-a-code-block\nnot /a command';
-		const r = planCreate({ title: 'x', projectId: 'g/web', description }, reg, items);
+		const r = planCreate({ title: 'x', projectId: 'g/web', description }, reg, items, 'g');
 		expect(r.ok && r.input.description).toBe(
 			'\\/move other-group/secret-project\nSome text\n  \\/assign @someone\n    /label ~in-a-code-block\nnot /a command'
 		);
+	});
+});
+
+describe('planCreate: epics are created in the group', () => {
+	const epic2 = item({}, { id: 'gid://gitlab/WorkItem/901', type: 'Epic' });
+	const all = [...items, epic2];
+	const create = (body: Record<string, unknown>, group = 'acme/platform') => planCreate(body, reg, all, group);
+
+	it('uses the server-side group path and needs no project', () => {
+		const r = create({ title: 'Big thing', type: 'epic', description: '/move elsewhere', values: { 'native:labels': ['l-bug'], 'native:startDate': '2026-12-01' } });
+		expect(r.ok && r.input).toEqual({
+			namespacePath: 'acme/platform',
+			workItemTypeId: 't8',
+			title: 'Big thing',
+			description: '\\/move elsewhere',
+			labelsWidget: { labelIds: ['l-bug'] },
+			startAndDueDateWidget: { startDate: '2026-12-01', isFixed: true }
+		});
+	});
+
+	it('still refuses an issue or task without a project', () => {
+		expect(create({ title: 'x' })).toMatchObject({ ok: false, error: expect.stringMatching(/projects/) });
+		expect(create({ title: 'x', type: 'Task' })).toMatchObject({ ok: false });
+	});
+
+	it('refuses fields that do not apply to an epic', () => {
+		const status = create({ title: 'x', type: 'Epic', values: { 'native:status': 's-todo' } });
+		expect(status).toMatchObject({ ok: false, error: expect.stringMatching(/doesn't apply to a Epic/) });
+		expect(create({ title: 'x', type: 'Epic', values: { 'custom:7': prio.options![0].id } })).toMatchObject({ ok: false });
+	});
+
+	it('only accepts another epic on the board as the parent', () => {
+		expect(create({ title: 'x', type: 'Epic', parentId: epic2.id })).toMatchObject({ ok: true, input: { hierarchyWidget: { parentId: epic2.id } } });
+		expect(create({ title: 'x', type: 'Epic', parentId: issue.id })).toMatchObject({ ok: false, error: expect.stringMatching(/must be an epic/) });
+		expect(create({ title: 'x', type: 'Epic', parentId: 'gid://gitlab/WorkItem/31337' })).toMatchObject({ ok: false });
+	});
+
+	it('does not let the browser choose the namespace', () => {
+		// A project sent with an epic is ignored; unknown keys such as namespacePath fail the strict schema.
+		expect(create({ title: 'x', type: 'Epic', projectId: 'g/web' })).toMatchObject({ ok: true, input: { namespacePath: 'acme/platform' } });
+		expect(create({ title: 'x', type: 'Epic', projectId: 'other/group' })).toMatchObject({ ok: true, input: { namespacePath: 'acme/platform' } });
+		expect(create({ title: 'x', type: 'Epic', namespacePath: 'other/group' })).toMatchObject({ ok: false, error: 'Invalid request' });
+		expect(create({ title: 'x', projectId: 'g/web', namespacePath: 'other/group' })).toMatchObject({ ok: false });
+	});
+
+	it('refuses an epic when the group path is not known', () => {
+		expect(create({ title: 'x', type: 'Epic' }, '')).toMatchObject({ ok: false });
 	});
 });
 
@@ -130,6 +178,63 @@ describe('neutralizeQuickActions', () => {
 	it('escapes every line that starts with a slash, including CRLF text, and nothing else', () => {
 		expect(neutralizeQuickActions('/clone x\r\n/spend 1h\r\nok')).toBe('\\/clone x\r\n\\/spend 1h\r\nok');
 		expect(neutralizeQuickActions('a/b\nhttps://x/y')).toBe('a/b\nhttps://x/y');
+	});
+
+	it('leaves code alone: fenced blocks (``` and ~~~) and indented lines', () => {
+		const md = ['/label ~x', '```sh', '/usr/bin/env node', '```', '/move here', '~~~~', '/tmp', '```', '/still code', '~~~~', '    /indented', '/after'].join('\n');
+		expect(neutralizeQuickActions(md).split('\n')).toEqual([
+			'\\/label ~x',
+			'```sh',
+			'/usr/bin/env node',
+			'```',
+			'\\/move here',
+			'~~~~',
+			'/tmp',
+			'```',
+			'/still code',
+			'~~~~',
+			'    /indented',
+			'\\/after'
+		]);
+	});
+
+	it('a fence that is never closed covers the rest of the text, as in Markdown', () => {
+		expect(neutralizeQuickActions('```\n/a\n/b')).toBe('```\n/a\n/b');
+	});
+});
+
+describe('planUpdate: description', () => {
+	const base = 'a'.repeat(64);
+	const desc = (value: unknown, extra: Record<string, unknown> = { baseVersion: base }) =>
+		planUpdate({ itemId: issue.id, field: 'description', value, ...extra }, reg, items);
+
+	it('builds the description widget, escapes quick actions, normalizes line ends, and keeps the base version', () => {
+		const r = desc('Hello\r\n/close\r\nbye');
+		expect(r.ok && r.input).toEqual({ id: issue.id, descriptionWidget: { description: 'Hello\n\\/close\nbye' } });
+		expect(r.ok && r.baseVersion).toBe(base);
+	});
+
+	it('clears with null', () => {
+		const r = desc(null);
+		expect(r.ok && r.input).toEqual({ id: issue.id, descriptionWidget: { description: '' } });
+	});
+
+	it('refuses without a base version, with a bad one, with a non-string value, or off the board', () => {
+		expect(desc('x', {})).toMatchObject({ ok: false, status: 400 });
+		expect(desc('x', { baseVersion: 'nope' })).toMatchObject({ ok: false, status: 400 });
+		expect(desc(['x'])).toMatchObject({ ok: false, status: 400 });
+		expect(desc(5)).toMatchObject({ ok: false, status: 400 });
+		expect(planUpdate({ itemId: 'gid://gitlab/WorkItem/4242', field: 'description', value: 'x', baseVersion: base }, reg, items)).toMatchObject({ ok: false, status: 404 });
+	});
+
+	it('accepts a long description up to DESCRIPTION_MAX and refuses one beyond it', () => {
+		expect(desc('x'.repeat(100_000))).toMatchObject({ ok: true });
+		expect(desc('x'.repeat(100_001))).toMatchObject({ ok: false, status: 400 });
+	});
+
+	it('a base version on another field is not allowed to smuggle anything: it is ignored', () => {
+		const r = planUpdate({ itemId: issue.id, field: 'title', value: 'New', baseVersion: base }, reg, items);
+		expect(r.ok && r.input).toEqual({ id: issue.id, title: 'New' });
 	});
 });
 
@@ -156,7 +261,7 @@ describe('guardWrite', () => {
 
 	it('refuses non-JSON and oversized bodies, and no session', async () => {
 		expect(await guardWrite(req({ ...good, 'content-type': 'text/plain' }), user, 'http://board.test', new RateLimiter(60))).toMatchObject({ status: 415 });
-		expect(await guardWrite(req(good, 'x'.repeat(40_000)), user, 'http://board.test', new RateLimiter(60))).toMatchObject({ status: 413 });
+		expect(await guardWrite(req(good, 'x'.repeat(MAX_BODY_BYTES + 1)), user, 'http://board.test', new RateLimiter(60))).toMatchObject({ status: 413 });
 		expect(await guardWrite(req(good), null, 'http://board.test', new RateLimiter(60))).toMatchObject({ status: 401 });
 	});
 
@@ -206,7 +311,7 @@ describe('create prefilled from a group or filter (review M8)', () => {
 	// "Weight must be a whole number of 0 or more", "Components needs a list".
 	const weight = reg.fields.find((f) => f.key === 'native:weight') ?? ({ key: 'native:weight', name: 'Weight', kind: 'number', ordered: true, editable: true, appliesTo: [] } as FieldDef);
 	const regW = registry([prio, comps, points, rating, weight]);
-	const create = (values: Record<string, unknown>) => planCreate({ title: 'New', projectId: 'g/web', values }, regW, items);
+	const create = (values: Record<string, unknown>) => planCreate({ title: 'New', projectId: 'g/web', values }, regW, items, 'g');
 
 	it('converts by field kind, and the server accepts the result', () => {
 		const values = {

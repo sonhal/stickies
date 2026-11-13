@@ -70,6 +70,9 @@ const PRIO = fieldsById['gid://gitlab/Issuables::CustomField/7'];
 const EFFORT = fieldsById['gid://gitlab/Issuables::CustomField/8'];
 const COMP = fieldsById['gid://gitlab/Issuables::CustomField/9'];
 
+/** The group every fake epic lives in */
+const GROUP_PATH = 'acme/platform';
+
 /** Raw items, in GitLab's shape, keyed by id */
 const items = new Map();
 let nextIid = { 'acme/platform': 10, 'acme/platform/api': 100, 'acme/platform/web': 200, 'acme/platform/data': 300 };
@@ -246,7 +249,25 @@ function render(raw) {
 		widgets.push({ type: 'CUSTOM_FIELDS', customFieldValues: cfv });
 	}
 	const { _, ...rest } = raw;
-	return { ...rest, widgets };
+	return { ...rest, widgets, userPermissions: permissionsFor(raw) };
+}
+
+/** The demo user may delete everything, except items with "[forbid]" in the title (like a non-Owner). */
+function permissionsFor(raw) {
+	return { deleteWorkItem: !raw.title.includes('[forbid]'), updateWorkItem: true };
+}
+
+/**
+ * Like GitLab: the item goes, and so do the parent links under it (they're their own records), so
+ * its children stay without a parent. Refused for "[forbid]" items, in GitLab's no-permission
+ * shape (null payload plus a top-level error), which the caller sends.
+ */
+function applyDelete(input) {
+	const raw = items.get(input?.id);
+	if (!raw || !permissionsFor(raw).deleteWorkItem) return null;
+	items.delete(raw.id);
+	for (const r of items.values()) if (r._.parent === raw.id) r._.parent = null;
+	return { errors: [] };
 }
 
 /** d.prio etc. hold either a label (seed data) or an option id (after a mutation) */
@@ -264,6 +285,7 @@ function applyUpdate(input) {
 	if (typeof input.title === 'string' && input.title.includes('[reject]'))
 		return { errors: ["The resource that you are attempting to access does not exist or you don't have permission to perform this action"], workItem: null };
 	if (input.title !== undefined) raw.title = input.title;
+	if (input.descriptionWidget && typeof input.descriptionWidget.description === 'string') d.desc = input.descriptionWidget.description;
 	if (input.statusWidget) {
 		d.status = input.statusWidget.status;
 		const cat = statuses.get(d.status)?.category;
@@ -298,9 +320,14 @@ function applyUpdate(input) {
 function applyCreate(input) {
 	const type = typesById[input.workItemTypeId]?.name ?? 'Issue';
 	const path = input.namespacePath;
-	if (!projects[path] && type !== 'Epic') return { errors: ['Namespace not found'], workItem: null };
-	const id = makeItem({ type, path, title: input.title, desc: input.description ?? '', status: input.statusWidget?.status ?? S.todo, parent: input.hierarchyWidget?.parentId ?? null, assignees: input.assigneesWidget?.assigneeIds ?? [], labels: input.labelsWidget?.labelIds ?? [], updatedDays: 0 });
-	const res = applyUpdate({ id, customFieldsWidget: input.customFieldsWidget ?? [], milestoneWidget: input.milestoneWidget, weightWidget: input.weightWidget, iterationWidget: input.iterationWidget, startAndDueDateWidget: input.startAndDueDateWidget });
+	const isEpic = type === 'Epic';
+	// Like GitLab: an epic lives in the group, everything else in one of its projects.
+	if (isEpic ? path !== GROUP_PATH : !projects[path]) return { errors: ['Namespace not found'], workItem: null };
+	const parent = input.hierarchyWidget?.parentId ?? null;
+	if (isEpic && parent && items.get(parent)?.workItemType.name !== 'Epic') return { errors: ["Parent can't be assigned: an epic can only have an epic as its parent"], workItem: null };
+	// Epics have no status widget; makeItem builds the group namespace, `acme/platform&12` reference and epic URL.
+	const id = makeItem({ type, path, title: input.title, desc: input.description ?? '', status: isEpic ? undefined : (input.statusWidget?.status ?? S.todo), parent, assignees: input.assigneesWidget?.assigneeIds ?? [], labels: input.labelsWidget?.labelIds ?? [], updatedDays: 0 });
+	const res = applyUpdate({ id, customFieldsWidget: isEpic ? [] : (input.customFieldsWidget ?? []), milestoneWidget: input.milestoneWidget, weightWidget: input.weightWidget, iterationWidget: input.iterationWidget, startAndDueDateWidget: input.startAndDueDateWidget });
 	return res;
 }
 
@@ -358,6 +385,10 @@ const server = createServer(async (req, res) => {
 					const conn = { pageInfo: { hasNextPage: more, endCursor: more ? String(start + v.first) : null }, nodes: page.map(render) };
 					return json(res, 200, { data: { [op === 'BoardGroupWorkItems' ? 'group' : 'project']: { workItems: conn } } });
 				}
+				case 'BoardDescription': {
+					const raw = items.get(v.id);
+					return json(res, 200, { data: { workItem: raw ? { id: raw.id, widgets: [{ type: 'DESCRIPTION', description: raw._.desc }] } : null } });
+				}
 				case 'BoardUpdateWorkItem':
 					writes++;
 					// "[forbid]" in a title: GitLab's real no-permission shape (ResourceNotAvailable): a null
@@ -371,6 +402,16 @@ const server = createServer(async (req, res) => {
 				case 'BoardCreateWorkItem':
 					writes++;
 					return json(res, 200, { data: { workItemCreate: applyCreate(v.input) } });
+				case 'BoardDeleteWorkItem': {
+					writes++;
+					const done = applyDelete(v.input);
+					if (!done)
+						return json(res, 200, {
+							data: { workItemDelete: null },
+							errors: [{ message: "The resource that you are attempting to access does not exist or you don't have permission to perform this action", path: ['workItemDelete'] }]
+						});
+					return json(res, 200, { data: { workItemDelete: done } });
+				}
 				case 'Metadata':
 					return json(res, 200, { data: { metadata: { version: '18.6.0-fake', revision: 'fake', enterprise: true } } });
 				case 'Describe':

@@ -12,6 +12,8 @@ issues from the board. A wall screen can run a read-only **kiosk**.
 |---|---|
 | ![Board](docs/screenshots/board-light.png) | ![Eisenhower matrix](docs/screenshots/matrix-dark.png) |
 | ![Detail panel](docs/screenshots/panel-dark.png) | ![Command palette](docs/screenshots/palette-light.png) |
+| ![Epics list](docs/screenshots/epics-light.png) | ![OR filters](docs/screenshots/filters-dark.png) |
+| ![Keyboard shortcuts](docs/screenshots/shortcuts-light.png) | ![Command palette, dark](docs/screenshots/palette-dark.png) |
 
 More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
 
@@ -19,8 +21,9 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
 
 - **Views** (Linear-style): filter chips built from your fields, grouping and sub-grouping, ordering,
   visible properties, sub-issues nested / flat / hidden, completed issues (All / Past day / Past week /
-  Past month / None), empty groups. Default views live in [`src/lib/views.config.ts`](src/lib/views.config.ts);
-  everyone can save their own views in their browser, share a view as a link, and export/import JSON.
+  Past month / None), empty groups. Default views live in [`src/lib/views.config.ts`](src/lib/views.config.ts).
+  Filters match all or any, and any filter can get alternatives ("Priority is High **or** due this week").
+  Everyone can save their own views in their browser, share a view as a link, and export/import JSON.
 - **Layouts:** List, and Board (columns from any single-select field, status, people, parent or epic;
   optional swimlanes; drag to update).
 - **Prioritization:** named tools in their own sidebar section, each an instance of a *tool type*:
@@ -28,19 +31,26 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   epic colors) and **Value vs effort** (Quick wins / Big bets / Fill-ins / Reconsider). Axes come from any
   ordered field. Instances live in [`src/lib/prioritization.config.ts`](src/lib/prioritization.config.ts);
   see [Prioritization tools](#prioritization-tools).
-- **Editing:** status, any custom field, assignees, parent epic, title, weight, start/due date, labels
-  (scoped labels stay exclusive), milestone, iteration, and *create issue* pre-filled from the current view.
+- **Editing:** status, any custom field, assignees, parent epic, title, description (full Markdown, in the side
+  panel), weight, start/due date, labels (scoped labels stay exclusive), milestone, iteration, and *create issue* or *create epic* (in the group) pre-filled
+  from the current view.
   Changes show at once and roll back with a message if GitLab refuses them.
+  **Delete** an issue or epic from the side panel, the palette or `⌘/Ctrl Backspace`, always after a
+  confirmation, and only offered when GitLab says you may (normally project Owners).
 - **Teams = projects, epics with progress:** the sidebar lists projects with open work and open epics;
-  `/epics` lists epics with progress from GitLab's rolled-up counts; `/epics/<id>` shows an epic's issues
+  `/epics` lists epics with progress from GitLab's rolled-up counts, with search, filters (status, assignee,
+  label), sortable columns and grouping (status, assignee, parent epic), kept in the URL; `/epics/<id>` shows an epic's issues
   through any view.
 - **Custom fields are discovered at runtime.** No code or default config depends on a field name or option
   value. A new, renamed, reordered or removed field or option shows up after the next schema refresh
   (≤ 10 minutes). A view that refers to a field that's gone still loads: the rule shows as a struck-through
   "field removed" chip and is ignored.
-- **Keyboard:** `⌘/Ctrl K` command palette · `j`/`k` or `↑`/`↓` move · `Enter` open · `Esc` close ·
-  `c` create · `s` status · `a` assignees · `l` labels · `w` weight · `g` then `1`–`9` go to a view ·
-  `g e` epics · `[` hide/show the sidebar (or « in its header, » on the left edge) · on a board, `Alt`+`←`/`→` moves the focused card · in an Eisenhower matrix, `←`/`→` (or `j`/`k`) walk the board.
+- **Keyboard:** press `?` for the full list. `⌘/Ctrl K` command palette · `j`/`k` or `↑`/`↓` move · `Enter`/`o` open ·
+  `Esc` close · `/` search · `f` add a filter · `c` create · `s` status · `a` assignees · `i` assign to me · `l` labels ·
+  `w` weight · `⌘/Ctrl Z` undo the last change · `⌘/Ctrl Backspace` delete (asks first) · `g` then `1`–`9`/`e`/`h` go to a view, epics, home · `[` hide/show the sidebar ·
+  on a board, `h`/`j`/`k`/`l` or arrows move between cards and columns, `Alt`+`←`/`→` (or `Shift`+`h`/`l`) moves the selected
+  card · in a 2×2 matrix, `←`/`→` (or `j`/`k`) walk the board. The list lives in
+  [`src/lib/client/shortcuts.ts`](src/lib/client/shortcuts.ts).
 
 ## Run it
 
@@ -111,7 +121,7 @@ so the board limits what it does with it:
 | Risk | What the board does |
 |---|---|
 | A stolen session cookie gives a powerful token | The cookie is AES-256-GCM sealed (HKDF-derived key), `HttpOnly`, `Secure`, `SameSite=Lax`. Sessions last `SESSION_MAX_AGE_DAYS` (default **1 day**). Sign-out revokes both tokens in GitLab. |
-| A board bug is used to call arbitrary GitLab APIs | There is **no GraphQL proxy**. The browser sends `{ itemId, field, value }`; the server validates it against the viewer's own FieldRegistry and items (the option must belong to the field, the field must apply to the item's type, titles ≤ 255 chars, no parent cycles, one label per `scope::`…) and only then builds one of **two allowlisted mutations** (`workItemUpdate` with specific widgets, `workItemCreate`). |
+| A board bug is used to call arbitrary GitLab APIs | There is **no GraphQL proxy**. The browser sends `{ itemId, field, value }`; the server validates it against the viewer's own FieldRegistry and items (the option must belong to the field, the field must apply to the item's type, titles ≤ 255 chars, no parent cycles, one label per `scope::`…) and only then builds one of **three allowlisted mutations** (`workItemUpdate` with specific widgets, `workItemCreate`, and `workItemDelete`, whose only input is the id of an item on the viewer's own board, sent as `{ itemId }` to `/api/items/delete`). |
 | Cross-site requests (CSRF) | Write endpoints only accept same-origin JSON (`Origin` must match `ORIGIN`). Sign-out is a POST covered by SvelteKit's origin check. |
 | A runaway client | `WRITE_RATE_PER_MINUTE` (default 60) per user, in memory. |
 | XSS would act as the user | Strict CSP (no inline or third-party scripts; all libraries are bundled), all GitLab content rendered as text, no `{@html}`, links filtered to http(s). |
@@ -311,6 +321,9 @@ What to check (each is a `VERIFY(phase0)` in the code):
     `weightWidget { weight }`, `startAndDueDateWidget { startDate | dueDate, isFixed }` (one date at a time),
     and `workItemCreate(input: { namespacePath, workItemTypeId, title, description, …widgets })`.
 11. Epics have no child epics (D8). The script reports "epic→epic" parents if it finds any.
+12. Deleting: `workItemDelete(input: { id })` (payload `errors` only) and `WorkItem.userPermissions { deleteWorkItem }`
+    (both checked against gitlab.com's schema). Worth trying once on a test project: delete a parent and check
+    its children stay, unlinked.
 
 If something differs, fix it in those three files and refresh the fixtures in
 `src/lib/server/gitlab/fixtures/` from `introspect-out/` (the normalizer tests use them).
@@ -328,15 +341,28 @@ If something differs, fix it in those three files and refresh the fixtures in
 - **Validated views** from every source (config, localStorage, URL, import) with a valibot schema and limits
   (depth, rule count, string lengths); a fuzz test throws random JSON at the parser and the query engine.
 - **On errors** the board keeps the last good data for network/5xx errors, and drops it on 401/403.
-- **No quick actions on create.** GitLab runs quick actions (`/move`, `/assign`, `/label` …) written at the
-  start of a line in a new issue's description, which would get around the board's write allowlist. The
-  server escapes them (`\/move`): the text still shows as `/move` in GitLab, but nothing runs.
+- **No quick actions in descriptions.** GitLab runs quick actions (`/move`, `/assign`, `/label` …) written at the
+  start of a line in a description it saves, which would get around the board's write allowlist. On create and on
+  edit the server escapes them (`\/move`): the text still shows as `/move` in GitLab, but nothing runs. Code
+  (fenced blocks and indented lines) is left as written, since GitLab doesn't run quick actions there.
+- **Description edits never overwrite someone else's.** The editor loads the full Markdown from GitLab and sends
+  back a hash of the text it started from; the server re-reads GitLab's text before saving and refuses (409) if it
+  changed. The editor keeps the user's text, and unsaved drafts survive switching issues (in memory only).
 - **Bounded work per description.** Only the first 20,000 characters of a description are converted to text,
   and every pattern in the converter is bounded, so a huge or hostile description (GitLab allows 1 MB) can't
   stall the server for every viewer. A test feeds it 1 MB attack strings with a time limit.
 - **Permission errors are recognized** whether GitLab reports them inside the mutation result or as a
   top-level GraphQL error (its usual "resource not available" shape): the user sees "You don't have
   permission" and the change is undone.
+- **Deleting** goes through the same guard as every write (signed-in user, never the kiosk, same origin,
+  JSON, rate limit), and the item must be on the viewer's board. The board only *offers* it when GitLab's
+  `userPermissions.deleteWorkItem` is true, but that is a hint for the UI: the server always asks GitLab,
+  which decides with the user's own token (a refusal shows "You don't have permission to delete this").
+  A delete is not optimistic and not undoable: the item stays until GitLab confirms, after a confirmation
+  dialog. What happens to children: GitLab removes the parent links with the parent, so issues and tasks
+  under a deleted item stay, without a parent, and the board shows them that way at once. For an epic's
+  child **epics**, older GitLab versions deleted them too; the confirmation says so, and the next refresh
+  shows what your GitLab did.
 - **Edits that cross on the wire.** Each edit carries a sequence number per item and field; a late response
   never overrides a newer edit, and a failed edit rolls back to what GitLab last confirmed.
 
