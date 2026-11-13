@@ -39,5 +39,7 @@ describe('shortcut list', () => {
 		expect(keyCaps('Mod+K', false)).toEqual([['Ctrl', 'K']]);
 		expect(keyCaps('G E', false)).toEqual([['G'], ['E']]);
 		expect(keyCaps('Alt+←', false)).toEqual([['Alt', '←']]);
+		expect(keyCaps('Mod+Backspace', true)).toEqual([['⌘', '⌫']]);
+		expect(keyCaps('Mod+Backspace', false)).toEqual([['Ctrl', 'Backspace']]);
 	});
 });

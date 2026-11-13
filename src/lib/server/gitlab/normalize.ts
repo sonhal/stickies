@@ -100,6 +100,7 @@ export interface RawWorkItem {
 	workItemType?: { id: string; name: string } | null;
 	namespace?: { id: string; fullPath: string; name?: string } | null;
 	widgets?: RawWidget[] | null;
+	userPermissions?: { deleteWorkItem?: boolean | null } | null;
 }
 export interface RawCustomFieldDef {
 	id: string;
@@ -347,7 +348,9 @@ export function normalizeWorkItem(raw: RawWorkItem, ctx: NormalizeContext): Work
 		projectId,
 		parentId,
 		progress,
-		values
+		values,
+		// Only an explicit yes counts: a missing or odd value hides the delete action rather than offering one that fails.
+		canDelete: raw.userPermissions?.deleteWorkItem === true
 	};
 }
 

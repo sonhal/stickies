@@ -106,6 +106,11 @@ export interface WorkItem {
 	progress: { total: number; closed: number } | null;
 	/** EVERY field, custom or native, lives here */
 	values: Partial<Record<FieldKey, FieldValue>>;
+	/**
+	 * GitLab says this viewer may delete the item (normally only project Owners). Only a hint for
+	 * the UI, false when unknown: the server still lets GitLab decide on every delete.
+	 */
+	canDelete: boolean;
 }
 
 export interface Person {

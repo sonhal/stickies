@@ -4,6 +4,7 @@
  *
  * --series-N      epic color slots (validated categorical palette)
  * --series-N-ink  text color drawn on top of that slot (best contrast of white/near-black)
+ * --danger-ink    text color on a solid --danger button
  */
 :root {
 	color-scheme: light;
@@ -17,6 +18,7 @@
 	--text-muted: #77766f;
 	--accent: #2a78d6;
 	--danger: #d03b3b;
+	--danger-ink: #ffffff;
 	--warning-bg: #fff4d6;
 	--quadrant-do-solid: #fdf3f2;
 	--quadrant-do-border: #efc9c6;
@@ -56,6 +58,7 @@
 		--text-muted: #94938b;
 		--accent: #3987e5;
 		--danger: #e66767;
+		--danger-ink: #141413;
 		--warning-bg: #3a3017;
 		--quadrant-do-solid: #261c1b;
 		--quadrant-do-border: #5a3533;
@@ -91,6 +94,7 @@
 	--text-muted: #94938b;
 	--accent: #3987e5;
 	--danger: #e66767;
+	--danger-ink: #141413;
 	--warning-bg: #3a3017;
 	--quadrant-do-solid: #261c1b;
 	--quadrant-do-border: #5a3533;
@@ -201,6 +205,16 @@ textarea {
 }
 .btn.danger {
 	color: var(--danger);
+}
+/* The confirm button of a destructive action. --danger-ink keeps the text readable on dark's lighter red. */
+.btn.danger.solid {
+	background: var(--danger);
+	border-color: var(--danger);
+	color: var(--danger-ink);
+	font-weight: 600;
+}
+.btn.danger.solid:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--danger) 88%, #000);
 }
 .btn.small {
 	height: 24px;

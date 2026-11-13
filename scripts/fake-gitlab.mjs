@@ -249,7 +249,25 @@ function render(raw) {
 		widgets.push({ type: 'CUSTOM_FIELDS', customFieldValues: cfv });
 	}
 	const { _, ...rest } = raw;
-	return { ...rest, widgets };
+	return { ...rest, widgets, userPermissions: permissionsFor(raw) };
+}
+
+/** The demo user may delete everything, except items with "[forbid]" in the title (like a non-Owner). */
+function permissionsFor(raw) {
+	return { deleteWorkItem: !raw.title.includes('[forbid]'), updateWorkItem: true };
+}
+
+/**
+ * Like GitLab: the item goes, and so do the parent links under it (they're their own records), so
+ * its children stay without a parent. Refused for "[forbid]" items, in GitLab's no-permission
+ * shape (null payload plus a top-level error), which the caller sends.
+ */
+function applyDelete(input) {
+	const raw = items.get(input?.id);
+	if (!raw || !permissionsFor(raw).deleteWorkItem) return null;
+	items.delete(raw.id);
+	for (const r of items.values()) if (r._.parent === raw.id) r._.parent = null;
+	return { errors: [] };
 }
 
 /** d.prio etc. hold either a label (seed data) or an option id (after a mutation) */
@@ -379,6 +397,16 @@ const server = createServer(async (req, res) => {
 				case 'BoardCreateWorkItem':
 					writes++;
 					return json(res, 200, { data: { workItemCreate: applyCreate(v.input) } });
+				case 'BoardDeleteWorkItem': {
+					writes++;
+					const done = applyDelete(v.input);
+					if (!done)
+						return json(res, 200, {
+							data: { workItemDelete: null },
+							errors: [{ message: "The resource that you are attempting to access does not exist or you don't have permission to perform this action", path: ['workItemDelete'] }]
+						});
+					return json(res, 200, { data: { workItemDelete: done } });
+				}
 				case 'Metadata':
 					return json(res, 200, { data: { metadata: { version: '18.6.0-fake', revision: 'fake', enterprise: true } } });
 				case 'Describe':

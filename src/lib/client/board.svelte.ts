@@ -54,6 +54,7 @@ export class BoardState {
 	}
 
 	setData(data: BoardData) {
+		if (this.removed.size) data = { ...data, items: data.items.filter((i) => !this.removed.has(i.id)) };
 		this.data = data;
 		for (const i of data.items) if (!this.pending.has(i.id)) this.confirmed.set(i.id, i);
 		// Keep optimistic values for items with a write still in flight.
@@ -211,6 +212,70 @@ export class BoardState {
 			this.notify("Couldn't reach the board server.", 'error');
 			return null;
 		}
+	}
+
+	/**
+	 * Delete an item in GitLab. Not optimistic, unlike `update`: a delete can't be taken back, so
+	 * the item stays on screen (drawn as pending) until GitLab confirms, and stays put if it refuses.
+	 * Not undoable either: nothing goes on the undo stack, and the item's earlier changes leave it.
+	 * Only ever called after the user confirmed (ConfirmDialog).
+	 */
+	async remove(id: string): Promise<boolean> {
+		const it = this.byId.get(id);
+		if (!it) return false;
+		this.begin(id);
+		try {
+			const res = await fetch('/api/items/delete', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ itemId: id })
+			});
+			const body = (await res.json().catch(() => null)) as { ok: boolean; error?: string } | null;
+			if (!res.ok || !body?.ok) {
+				this.notify(body?.error ?? `Couldn't delete ${it.ref} (HTTP ${res.status})`, 'error');
+				return false;
+			}
+			this.forgetItem(id);
+			this.onremove(id);
+			this.notify(`Deleted ${it.ref}`);
+			return true;
+		} catch {
+			this.notify(`Couldn't reach the board server. ${it.ref} was not deleted.`, 'error');
+			return false;
+		} finally {
+			this.end(id);
+		}
+	}
+
+	/** Set by the shell: a deleted item must stop being selected */
+	onremove: (id: string) => void = () => {};
+	/** Deleted from this tab: a refresh that was already on its way must not bring them back */
+	private removed = new Set<string>();
+
+	private forgetItem(id: string) {
+		this.removed.add(id);
+		this.undoStack = this.undoStack.filter((u) => u.id !== id);
+		this.confirmed.delete(id);
+		this.ownWrites.delete(id);
+		for (const [slot, w] of this.latest) if (w.id === id) this.latest.delete(slot);
+		// GitLab drops the parent links with the parent: its sub-items stay, without a parent. Also
+		// in `confirmed`, so a failed edit on a sub-item can't roll its parent back.
+		const orphan = (x: WorkItem): WorkItem => {
+			const values = { ...x.values };
+			delete values['native:parent'];
+			return { ...x, parentId: null, values };
+		};
+		for (const [cid, c] of this.confirmed) if (c.parentId === id) this.confirmed.set(cid, orphan(c));
+		const items = this.items.filter((x) => x.id !== id).map((x) => (x.parentId === id ? orphan(x) : x));
+		// Nor is it offered as a parent or epic any more.
+		const reg = this.data.registry;
+		const fields = reg.fields.map((f) =>
+			(f.key === 'native:parent' || f.key === 'native:epic') && f.options?.some((o) => o.id === id)
+				? { ...f, options: f.options.filter((o) => o.id !== id) }
+				: f
+		);
+		this.data = { ...this.data, items: this.data.items.filter((x) => x.id !== id), registry: { ...reg, fields } };
+		this.items = withEpics(items, this.data.registry);
 	}
 
 	field(key: FieldKey): FieldDef | undefined {

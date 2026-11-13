@@ -41,6 +41,8 @@ export const SHORTCUTS: Shortcut[] = [
 	{ group: 'Issue actions', label: 'Change labels', keys: ['L'], context: 'list', write: true, note: 'lists only' },
 	{ group: 'Issue actions', label: 'Change weight', keys: ['W'], context: 'items', write: true },
 	{ group: 'Issue actions', label: 'Undo the last change', keys: ['Mod+Z'], context: 'global', write: true },
+	// Always asks first: the key only opens the confirmation, never deletes by itself.
+	{ group: 'Issue actions', label: 'Delete issue…', keys: ['Mod+Backspace', 'Mod+Delete'], context: 'global', write: true },
 
 	{ group: 'Board', label: 'Up / down in the column', keys: ['↑', '↓', 'K', 'J'], context: 'board' },
 	{ group: 'Board', label: 'Neighbouring column', keys: ['←', '→', 'H', 'L'], context: 'board' },
@@ -69,7 +71,8 @@ export function shortcutGroups(readOnly: boolean): { group: ShortcutGroup; items
  * Outer list: keys pressed one after the other. Inner list: keys held together.
  */
 export function keyCaps(combo: string, mac: boolean): string[][] {
-	const names: Record<string, string> = mac ? { Mod: '⌘', Alt: '⌥', Shift: '⇧' } : { Mod: 'Ctrl' };
+	// A Mac labels Backspace "delete" (⌫) and forward delete ⌦: draw what is on the key.
+	const names: Record<string, string> = mac ? { Mod: '⌘', Alt: '⌥', Shift: '⇧', Backspace: '⌫', Delete: '⌦' } : { Mod: 'Ctrl' };
 	return combo.split(' ').map((chord) => chord.split('+').map((k) => names[k] ?? k));
 }
 

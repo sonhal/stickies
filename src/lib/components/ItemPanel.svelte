@@ -9,6 +9,7 @@
 	let { item, onclose }: { item: WorkItem; onclose: () => void } = $props();
 	const board = getBoard();
 	const ui = getUi();
+	const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 
 	// "Updated by someone else": the item changed after the panel opened, and not by our own write.
 	let baseline = $state<{ id: string; at: string } | null>(null);
@@ -83,9 +84,31 @@
 		{/if}
 	{/snippet}
 	{#snippet value(f, i)}<FieldEditor key={f.key} item={i} />{/snippet}
+	{#snippet actions(i)}
+		<!-- Only when GitLab says this viewer may delete it: no dead button for everyone else. -->
+		{#if !ui.readOnly && i.canDelete}
+			<div class="item-actions">
+				<button
+					type="button"
+					class="btn ghost small danger"
+					title="Delete in GitLab ({mac ? '⌘' : 'Ctrl'}+Backspace)"
+					disabled={board.pending.has(i.id)}
+					onclick={() => (ui.deleteRequest = i.id)}>Delete {i.type.toLowerCase() === 'epic' ? 'epic' : 'issue'}…</button
+				>
+			</div>
+		{/if}
+	{/snippet}
 </DetailPanel>
 
 <style>
+	.item-actions {
+		border-top: 1px solid var(--grid);
+		padding-top: 10px;
+	}
+	/* Line the label up with the panel's text, not the button's padding */
+	.item-actions .btn {
+		margin-left: -7px;
+	}
 	.conflict {
 		display: flex;
 		align-items: center;

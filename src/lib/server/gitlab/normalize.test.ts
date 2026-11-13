@@ -152,6 +152,18 @@ describe('normalizeWorkItem', () => {
 		expect(e.progress).toEqual({ total: 10, closed: 6 });
 	});
 
+	it('reads the delete permission, and treats a missing one as "no"', () => {
+		expect(byId['gid://gitlab/WorkItem/1001'].canDelete).toBe(true);
+		expect(byId['gid://gitlab/WorkItem/900'].canDelete).toBe(false);
+		expect(byId['gid://gitlab/WorkItem/1002'].canDelete).toBe(false); // no userPermissions in the response
+		const base = rawItems[0];
+		const odd = (userPermissions: unknown) => normalizeWorkItem({ ...base, userPermissions } as RawWorkItem, { projectPaths }).canDelete;
+		expect(odd(null)).toBe(false);
+		expect(odd({})).toBe(false);
+		expect(odd({ deleteWorkItem: 'true' })).toBe(false);
+		expect(odd({ deleteWorkItem: true })).toBe(true);
+	});
+
 	it('blocks javascript: urls and reads closed items', () => {
 		expect(byId['gid://gitlab/WorkItem/1002'].url).toBeNull();
 		const c = byId['gid://gitlab/WorkItem/1003'];

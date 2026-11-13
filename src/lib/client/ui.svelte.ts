@@ -53,6 +53,8 @@ export class UiState {
 	readOnly = $state(false);
 	/** The keyboard shortcut sheet (?) is showing */
 	shortcutsOpen = $state(false);
+	/** Id of the item whose "Delete…" confirmation is showing (panel button, palette, Mod+Backspace) */
+	deleteRequest = $state<string | null>(null);
 	/**
 	 * Set by a layout that moves the selection in its own way (the board: by column and row).
 	 * The shell's key handler calls this instead of `move`. Cleared when the layout goes away.
@@ -80,6 +82,15 @@ export class UiState {
 		if (!this.selectedId || this.readOnly) return;
 		this.panelOpen = true;
 		this.editRequest = { field, n: (this.editRequest?.n ?? 0) + 1 };
+	}
+
+	/** An item is gone (deleted): stop selecting it and close its panel. */
+	forget(id: string) {
+		if (this.selectedId === id) {
+			this.selectedId = null;
+			this.panelOpen = false;
+		}
+		if (this.deleteRequest === id) this.deleteRequest = null;
 	}
 
 	toast(text: string, kind: Toast['kind'] = 'info') {
