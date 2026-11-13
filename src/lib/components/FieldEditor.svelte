@@ -84,12 +84,14 @@
 
 	function saveScalar(close: () => void, clear = false) {
 		if (!field) return;
-		if (clear || draft.trim() === '') board.update(item.id, key, null);
+		// A number input hands back a number (or null when empty), not a string.
+		const text = String(draft ?? '').trim();
+		if (clear || text === '') board.update(item.id, key, null);
 		else if (field.kind === 'number') {
-			const n = Number(draft);
+			const n = Number(text);
 			if (!Number.isFinite(n)) return;
 			board.update(item.id, key, n);
-		} else board.update(item.id, key, draft.trim());
+		} else board.update(item.id, key, text);
 		close();
 	}
 

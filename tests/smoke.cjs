@@ -61,6 +61,21 @@ step('inline edit: status via keyboard (s) is saved', async (p) => {
 	if ((await writes()) !== before + 1) throw new Error('no write reached GitLab');
 });
 
+step('inline edit: weight via keyboard (w) is saved as a number', async (p) => {
+	await open(p, '/v/my-issues');
+	await p.locator('.row .hit').first().click();
+	await p.waitForSelector('aside.detail article');
+	const before = await writes();
+	await p.keyboard.press('w');
+	await p.locator('aside.detail input[type="number"]').fill('7');
+	await p.keyboard.press('Enter');
+	for (let i = 0; i < 20 && (await writes()) === before; i++) await p.waitForTimeout(150);
+	if ((await writes()) !== before + 1) throw new Error('no write reached GitLab');
+	const ref = (await p.locator('aside.detail .ref').innerText()).trim();
+	const w = await p.evaluate(async (r) => (await (await fetch('/api/board')).json()).board.items.find((i) => i.ref === r)?.values['native:weight'], ref);
+	if (w?.value !== 7) throw new Error(`weight is ${JSON.stringify(w)}`);
+});
+
 step('a write GitLab rejects is rolled back with a toast', async (p) => {
 	await p.waitForSelector('aside.detail article');
 	const before = await p.locator('aside.detail h2').textContent();
