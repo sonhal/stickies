@@ -54,7 +54,7 @@
 	async function copyLink() {
 		if (!view) return;
 		const path = personal || shared ? '/v/shared' : `/v/${view.id}`;
-		// Keeps the open issue and a hidden sidebar, so the link shows what you're looking at.
+		// Keeps ?sidebar=hidden, so the link opens the way you're looking at it.
 		const qs = keepShellParams(`v=${encodeView(view)}`, new URL(location.href).searchParams);
 		const url = `${page.url.origin}${path}?${qs}`;
 		try {

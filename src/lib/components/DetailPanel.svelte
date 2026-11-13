@@ -22,9 +22,22 @@
 		 */
 		actions?: Snippet<[WorkItem]>;
 		compact?: boolean;
+		/**
+		 * Full-page layout (/issue/<id>), like Linear's issue view: title, description and sub-issues
+		 * in a wide column, the fields in a "Properties" column on the right. No header: the page
+		 * draws its own bar.
+		 */
+		page?: boolean;
+		/** Parents and children become links to these paths (the full page) instead of onopen */
+		hrefFor?: (id: string) => string;
+		/** Page only: a control next to the "Sub-issues" heading (e.g. "+ Add sub-issue") */
+		childAction?: Snippet<[WorkItem]>;
+		/** Panel only: link to the item's full page, shown as an expand button in the header */
+		pageHref?: string;
+		onpage?: () => void;
 	}
 
-	let { item, onclose, onopen, value, title, description, actions, compact = false }: Props = $props();
+	let { item, onclose, onopen, value, title, description, actions, compact = false, page = false, hrefFor, childAction, pageHref, onpage }: Props = $props();
 	const board = getBoard();
 
 	/** Every field that applies to this item's type, plus any other field it has a value for. */
@@ -46,36 +59,31 @@
 		return out;
 	});
 	const children = $derived(board.items.filter((i) => i.parentId === item.id));
+	const childrenDone = $derived(children.filter((c) => closedKind(board.reg, c)).length);
+	/** GitLab counts children the board doesn't hold (closed long ago, or not visible to you) */
+	const childrenElsewhere = $derived(item.progress ? Math.max(0, item.progress.total - children.length) : 0);
 	const paragraphs = $derived(item.description ? item.description.split(/\n{2,}/) : []);
 	const closed = $derived(closedKind(board.reg, item));
 	const updatedLocally = $derived(item.updatedAt);
 </script>
 
-<article class="panel" class:compact aria-label="Issue details: {item.title}">
-	<header>
-		<span class="epic" style="background: {slotVar(board.colors.slotFor(item))}"></span>
-		<span class="ref">{item.ref}</span>
-		<span class="type">{item.type}</span>
-		{#if closed}<span class="closed">{closed === 'done' ? 'Completed' : 'Canceled'}</span>{/if}
-		<span class="spacer"></span>
-		{#if item.url}
-			<a class="btn ghost small" href={item.url} target="_blank" rel="noopener noreferrer">Open in GitLab ↗</a>
-		{/if}
-		{#if onclose}<button type="button" class="btn ghost small x" onclick={onclose} aria-label="Close panel (Esc)">×</button>{/if}
-	</header>
-
+{#snippet crumbsBlock()}
 	{#if crumbs.length}
 		<nav class="crumbs" aria-label="Parents">
 			{#each crumbs as c (c.id)}
-				<button type="button" class="crumb" onclick={() => onopen?.(c.id)}>{c.title}</button><span aria-hidden="true">›</span>
+				{#if hrefFor}
+					<a class="crumb" href={hrefFor(c.id)}>{c.title}</a><span aria-hidden="true">›</span>
+				{:else}
+					<button type="button" class="crumb" onclick={() => onopen?.(c.id)}>{c.title}</button><span aria-hidden="true">›</span>
+				{/if}
 			{/each}
 		</nav>
 	{:else if item.parentId}
 		<p class="crumbs muted">Parent: {board.text(item, 'native:parent') || 'not on the board'}</p>
 	{/if}
+{/snippet}
 
-	{#if title}{@render title(item)}{:else}<h2>{item.title}</h2>{/if}
-
+{#snippet fieldsBlock()}
 	<dl class="fields">
 		{#each fields as f (f.key)}
 			<div class="f">
@@ -86,7 +94,9 @@
 			</div>
 		{/each}
 	</dl>
+{/snippet}
 
+{#snippet progressBlock()}
 	{#if item.progress && item.progress.total > 0}
 		{@const pct = Math.round((item.progress.closed / item.progress.total) * 100)}
 		<div class="progress" title="{item.progress.closed} of {item.progress.total} child items closed (from GitLab)">
@@ -94,36 +104,100 @@
 			<span>{pct}% · {item.progress.closed}/{item.progress.total}</span>
 		</div>
 	{/if}
+{/snippet}
 
-	{#snippet readDescription()}
-		<div class="desc">
-			{#each paragraphs as p, i (i)}
-				<p>{p}</p>
-			{:else}
-				<p class="muted"><em>No description.</em></p>
-			{/each}
-			{#if item.descriptionTruncated && item.url}
-				<a href={item.url} target="_blank" rel="noopener noreferrer">Read the rest in GitLab ↗</a>
-			{/if}
-		</div>
-	{/snippet}
-	{#if description}{@render description(item, readDescription)}{:else}{@render readDescription()}{/if}
+{#snippet readDescription()}
+	<div class="desc">
+		{#each paragraphs as p, i (i)}
+			<p>{p}</p>
+		{:else}
+			<p class="muted"><em>No description.</em></p>
+		{/each}
+		{#if item.descriptionTruncated && item.url}
+			<a href={item.url} target="_blank" rel="noopener noreferrer">Read the rest in GitLab ↗</a>
+		{/if}
+	</div>
+{/snippet}
 
-	{#if children.length}
+{#snippet childrenBlock()}
+	{#if children.length || (page && childAction)}
 		<section class="children">
-			<h3>Sub-items <span class="muted">{children.length}</span></h3>
+			<h3>
+				{page ? 'Sub-issues' : 'Sub-items'}
+				<span class="muted">{#if page && children.length}{childrenDone}/{children.length}{:else}{children.length}{/if}</span>
+				{#if page && childAction}<span class="spacer"></span>{@render childAction(item)}{/if}
+			</h3>
 			{#each children as c (c.id)}
-				<button type="button" class="child" onclick={() => onopen?.(c.id)}>
-					<StatusIcon status={board.status(c)} size={12} />
-					<span class="cref">{c.ref.replace(/^.*\//, '')}</span>
-					<span class="ctitle">{c.title}</span>
-				</button>
+				{#if hrefFor}
+					<a class="child" href={hrefFor(c.id)}>
+						<StatusIcon status={board.status(c)} size={12} />
+						<span class="cref">{c.ref.replace(/^.*\//, '')}</span>
+						<span class="ctitle">{c.title}</span>
+					</a>
+				{:else}
+					<button type="button" class="child" onclick={() => onopen?.(c.id)}>
+						<StatusIcon status={board.status(c)} size={12} />
+						<span class="cref">{c.ref.replace(/^.*\//, '')}</span>
+						<span class="ctitle">{c.title}</span>
+					</button>
+				{/if}
 			{/each}
+			{#if page && childrenElsewhere}
+				<p class="elsewhere muted">
+					+ {childrenElsewhere} more in GitLab that aren't on the board (closed a while ago, or not visible to you).
+				</p>
+			{/if}
 		</section>
 	{/if}
+{/snippet}
+
+{#snippet updatedBlock()}
 	<p class="updated muted">Updated {updatedLocally.slice(0, 16).replace('T', ' ')} UTC</p>
-	{#if actions}{@render actions(item)}{/if}
-</article>
+{/snippet}
+
+{#if page}
+	<!-- Full page (/issue/<id>), laid out like Linear's issue view: the work on the left, properties on the right -->
+	<article class="page" aria-label="Issue: {item.title}">
+		<div class="main">
+			{@render crumbsBlock()}
+			{#if title}{@render title(item)}{:else}<h1 class="ptitle">{item.title}</h1>{/if}
+			{#if description}{@render description(item, readDescription)}{:else}{@render readDescription()}{/if}
+			{@render childrenBlock()}
+			{#if actions}{@render actions(item)}{/if}
+		</div>
+		<aside class="props" aria-label="Properties">
+			<h2 class="props-h">Properties</h2>
+			{@render fieldsBlock()}
+			{@render progressBlock()}
+			{@render updatedBlock()}
+		</aside>
+	</article>
+{:else}
+	<article class="panel" class:compact aria-label="Issue details: {item.title}">
+		<header>
+			<span class="epic" style="background: {slotVar(board.colors.slotFor(item))}"></span>
+			<span class="ref">{item.ref}</span>
+			<span class="type">{item.type}</span>
+			{#if closed}<span class="closed">{closed === 'done' ? 'Completed' : 'Canceled'}</span>{/if}
+			<span class="spacer"></span>
+			{#if pageHref}
+				<a class="btn ghost small x" href={pageHref} onclick={onpage} title="Open as page" aria-label="Open as page">⤢</a>
+			{/if}
+			{#if item.url}
+				<a class="btn ghost small" href={item.url} target="_blank" rel="noopener noreferrer">Open in GitLab ↗</a>
+			{/if}
+			{#if onclose}<button type="button" class="btn ghost small x" onclick={onclose} aria-label="Close panel (Esc)">×</button>{/if}
+		</header>
+		{@render crumbsBlock()}
+		{#if title}{@render title(item)}{:else}<h2>{item.title}</h2>{/if}
+		{@render fieldsBlock()}
+		{@render progressBlock()}
+		{#if description}{@render description(item, readDescription)}{:else}{@render readDescription()}{/if}
+		{@render childrenBlock()}
+		{@render updatedBlock()}
+		{#if actions}{@render actions(item)}{/if}
+	</article>
+{/if}
 
 <style>
 	.panel {
@@ -286,5 +360,89 @@
 	}
 	.compact {
 		padding: 0;
+	}
+
+	/* ---- Full page ---- */
+	.page {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 300px;
+		min-height: 0;
+		flex: 1;
+	}
+	.main {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		width: 100%;
+		max-width: 820px;
+		margin: 0 auto;
+		padding: 28px 40px 48px;
+		min-width: 0;
+	}
+	.ptitle {
+		margin: 0;
+		font-size: 24px;
+		line-height: 1.25;
+		overflow-wrap: anywhere;
+	}
+	.page .desc {
+		border-top: 0;
+		padding-top: 0;
+		font-size: 15px;
+	}
+	.page .children {
+		border-top: 1px solid var(--grid);
+		padding-top: 14px;
+	}
+	.children h3 {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.elsewhere {
+		font-size: 12.5px;
+		margin: 6px 6px 0;
+	}
+	.children h3 .spacer {
+		flex: 1;
+	}
+	a.child {
+		color: inherit;
+		text-decoration: none;
+	}
+	a.crumb {
+		text-decoration: none;
+	}
+	.props {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		padding: 18px 18px 32px;
+		border-left: 1px solid var(--border);
+		background: var(--surface-1);
+		min-width: 0;
+	}
+	.props-h {
+		margin: 0;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-muted);
+	}
+	.props .fields {
+		grid-template-columns: minmax(80px, max-content) minmax(0, 1fr);
+		margin: 0;
+	}
+	@media (max-width: 900px) {
+		.page {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		/* Narrow: the title and description first, properties below, as on a phone in Linear */
+		.props {
+			border-left: 0;
+			border-top: 1px solid var(--border);
+		}
+		.main {
+			padding: 20px 16px 40px;
+		}
 	}
 </style>

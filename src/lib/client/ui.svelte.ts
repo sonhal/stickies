@@ -55,6 +55,10 @@ export class UiState {
 	shortcutsOpen = $state(false);
 	/** Id of the item whose "Delete…" confirmation is showing (panel button, palette, Mod+Backspace) */
 	deleteRequest = $state<string | null>(null);
+	/** Id of the item whose full page (/issue/<id>) is showing: the side panel stays closed for it */
+	pageItemId = $state<string | null>(null);
+	/** Set by the issue page: what Escape does there (go back to where you came from) */
+	pageBack: (() => void) | null = null;
 	/**
 	 * Set by a layout that moves the selection in its own way (the board: by column and row).
 	 * The shell's key handler calls this instead of `move`. Cleared when the layout goes away.

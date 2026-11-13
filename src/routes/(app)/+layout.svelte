@@ -17,7 +17,7 @@
 	import ShortcutSheet from '$lib/components/ShortcutSheet.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { deleteText } from '$lib/client/deleteText';
-	import { ISSUE_PARAM, findItemByParam, readSidebarParam, withShellState } from '$lib/client/urlState';
+	import { readSidebarParam, withSidebarParam } from '$lib/client/urlState';
 	import type { Command } from '$lib/client/commands';
 	import type { NavDir } from '$lib/client/boardNav';
 	import { appliesTo, closedKind } from '$lib/fields/registry';
@@ -283,7 +283,8 @@
 			return;
 		}
 		if (key === 'Escape') {
-			if (ui.panelOpen) ui.close();
+			if (showPanel) ui.close();
+			else if (ui.pageBack) ui.pageBack();
 			else ui.selectedId = null;
 			return;
 		}
@@ -386,46 +387,30 @@
 
 	const hasEpicType = $derived(board.reg.types.some((t) => t.name.toLowerCase() === 'epic'));
 
-	const showPanel = $derived(!!selected && ui.panelOpen);
+	// Not for the item whose full page is showing: the page already is its panel.
+	const showPanel = $derived(!!selected && ui.panelOpen && selected.id !== ui.pageItemId);
 
-	// ---- URL state (?issue=, ?sidebar=) --------------------------------------------------------
-	// The URL mirrors the open panel, so the address bar is always a link to what you see.
-	// ?sidebar=hidden is only read (see navHiddenByUrl): the sidebar is otherwise left to you.
+	// ---- ?sidebar=hidden --------------------------------------------------------------------------
+	// Only read (see navHiddenByUrl). The side panel isn't in the URL: links go to /issue/<id>.
 	let urlReady = $state(false);
-
-	/** Applies ?issue= and ?sidebar= from a URL we just arrived at. */
-	function applyUrl(url: URL, kind: 'enter' | 'popstate' | 'link') {
-		// From a link it isn't saved: opening a link doesn't change your own preference.
-		if (readSidebarParam(url.searchParams)) navHidden = navHiddenByUrl = true;
-		else if (kind === 'enter') navHidden = storedNavHidden();
-
-		const raw = url.searchParams.get(ISSUE_PARAM);
-		if (raw !== null) {
-			const it = findItemByParam(board.items, raw);
-			if (it) ui.open(it.id);
-			else {
-				ui.close();
-				ui.toast("That issue isn't on the board. It may be closed a while ago, deleted, or not visible to you.", 'error');
-			}
-		} else if (kind === 'popstate') {
-			// Back/forward: the history entry says the panel was closed.
-			ui.close();
-		}
-	}
 
 	afterNavigate((nav) => {
 		if (!nav.to) return;
-		applyUrl(nav.to.url, nav.type === 'enter' ? 'enter' : nav.type === 'popstate' ? 'popstate' : 'link');
+		// From a link it isn't saved: opening a link doesn't change your own preference.
+		if (readSidebarParam(nav.to.url.searchParams)) navHidden = navHiddenByUrl = true;
+		else if (nav.type === 'enter') navHidden = storedNavHidden();
 		urlReady = true;
 	});
 
+	// Keeps ?sidebar=hidden in the address bar while it's what hides the sidebar, so in-app
+	// navigation (and kiosk rotation) followed by a reload stays full-width.
 	$effect(() => {
 		// page.url only to re-run after navigations; shallow replaceState leaves it as it was, so
 		// the address bar is what we compare with.
 		void page.url;
-		const state = { issue: showPanel ? ui.selectedId : null, sidebarHidden: navHiddenByUrl && navHidden };
+		const keep = navHiddenByUrl && navHidden;
 		if (!urlReady) return;
-		const next = withShellState(new URL(location.href), state);
+		const next = withSidebarParam(new URL(location.href), keep);
 		if (next) untrack(() => replaceState(next, page.state));
 	});
 

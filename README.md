@@ -24,10 +24,11 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   Past month / None), empty groups. Default views live in [`src/lib/views.config.ts`](src/lib/views.config.ts).
   Filters match all or any, and any filter can get alternatives ("Priority is High **or** due this week").
   Everyone can save their own views in their browser, share a view as a link, and export/import JSON.
-- **Links to an issue:** the address bar always holds the open issue, so you can copy it and share it.
-  `?issue=123` opens the side panel on an item (the number at the end of its GitLab id; a reference like
-  `team/api%2312` works too). It combines with view links (`?v=`) and the epics list's own parameters.
-  The panel also has **Copy link**.
+- **Issue pages:** every issue and epic has a full page at `/issue/<id>` (the number at the end of its
+  GitLab id; a reference like `team/api%2312` works too), laid out like Linear's issue view: title,
+  description and sub-issues, with the properties on the right, all editable in place. **Copy link** (in the
+  side panel and on the page) copies that address; ⤢ in the side panel opens it. `Esc` goes back. The side
+  panel itself is a quick look and isn't in the URL.
 - **`?sidebar=hidden`** (optional) opens the board with the sidebar hidden, e.g. for a wall screen:
   `/kiosk/<KIOSK_KEY>?sidebar=hidden`. It isn't saved as anyone's preference, and stays in the URL through
   kiosk rotation and reloads until someone shows the sidebar. Without it, the sidebar is as you left it.

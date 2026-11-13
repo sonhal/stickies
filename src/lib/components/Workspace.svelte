@@ -79,7 +79,7 @@
 	/** Every change to the view goes into the URL (?v=), so reload and back/forward keep it. */
 	function change(next: ViewDefinition) {
 		if (onchange) return onchange(next);
-		// The address bar, not page.url: the open issue and sidebar are written there shallowly.
+		// The address bar, not page.url: ?sidebar=hidden is written there shallowly.
 		const url = new URL(location.href);
 		url.searchParams.set('v', encodeView(next));
 		goto(url.pathname + url.search, { replaceState: true, keepFocus: true, noScroll: true });

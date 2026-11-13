@@ -43,7 +43,7 @@
 
 	function push() {
 		timer = undefined;
-		// The open issue and sidebar ride along (from the address bar: they're written there shallowly).
+		// ?sidebar=hidden rides along (from the address bar: the layout writes it there shallowly).
 		const qs = keepShellParams(epicListQuery(s), new URLSearchParams(location.search));
 		if ((qs ? `?${qs}` : '') === location.search) return;
 		writing++;

@@ -2,13 +2,16 @@
 	import { getBoard } from '$lib/client/board.svelte';
 	import { getUi } from '$lib/client/ui.svelte';
 	import type { WorkItem } from '$lib/fields/types';
-	import { ISSUE_PARAM, itemParam } from '$lib/client/urlState';
+	import { issuePath, keepShellParams } from '$lib/client/urlState';
 	import DetailPanel from './DetailPanel.svelte';
 	import FieldEditor from './FieldEditor.svelte';
 	import DescriptionEditor from './DescriptionEditor.svelte';
 
-	/** The detail panel with inline editing and a conflict notice. */
-	let { item, onclose }: { item: WorkItem; onclose: () => void } = $props();
+	/**
+	 * The detail panel with inline editing and a conflict notice. `page` draws it as the full
+	 * issue page (/issue/<id>): parents and sub-issues are links there, and it has no close button.
+	 */
+	let { item, onclose, page = false }: { item: WorkItem; onclose?: () => void; page?: boolean } = $props();
 	const board = getBoard();
 	const ui = getUi();
 	const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -42,10 +45,10 @@
 		if (t && t !== item.title) board.update(item.id, 'title', t);
 	}
 
-	/** A link to this page with this item open (and the sidebar as it is now). */
+	/** A link to the item's full page (keeping ?sidebar=hidden when it's in the URL). */
 	async function copyLink(i: WorkItem) {
-		const url = new URL(location.href);
-		url.searchParams.set(ISSUE_PARAM, itemParam(i.id));
+		const qs = keepShellParams('', new URLSearchParams(location.search));
+		const url = new URL(issuePath(i.id) + (qs ? `?${qs}` : ''), location.origin);
 		try {
 			await navigator.clipboard.writeText(url.href);
 			ui.toast(`Link to ${i.ref} copied`);
@@ -62,7 +65,15 @@
 	</div>
 {/if}
 
-<DetailPanel {item} {onclose} onopen={(id) => ui.open(id)}>
+<DetailPanel
+	{item}
+	{onclose}
+	{page}
+	onopen={(id) => ui.open(id)}
+	hrefFor={page ? issuePath : undefined}
+	pageHref={page ? undefined : issuePath(item.id)}
+	onpage={() => ui.close()}
+>
 	{#snippet title(i)}
 		{#if editingTitle}
 			<form
@@ -92,16 +103,26 @@
 				></textarea>
 			</form>
 		{:else if ui.readOnly}
-			<h2 class="title">{i.title}</h2>
+			<h2 class="title" class:big={page}>{i.title}</h2>
 		{:else}
-			<h2 class="title"><button type="button" class="title-btn" title="Edit title" onclick={startTitle}>{i.title}</button></h2>
+			<h2 class="title" class:big={page}><button type="button" class="title-btn" title="Edit title" onclick={startTitle}>{i.title}</button></h2>
+		{/if}
+	{/snippet}
+	{#snippet childAction(i)}
+		{#if !ui.readOnly}
+			<button
+				type="button"
+				class="btn ghost small"
+				onclick={() => (ui.createOpen = { projectId: i.type.toLowerCase() === 'epic' ? undefined : (i.projectId ?? undefined), parentId: i.id })}
+				>+ Add sub-issue</button
+			>
 		{/if}
 	{/snippet}
 	{#snippet value(f, i)}<FieldEditor key={f.key} item={i} />{/snippet}
 	{#snippet description(i, read)}{#key i.id}<DescriptionEditor item={i} {read} />{/key}{/snippet}
 	{#snippet actions(i)}
 		<div class="item-actions">
-			<button type="button" class="btn ghost small" title="Copy a link that opens this page with this {i.type.toLowerCase()} open" onclick={() => copyLink(i)}>Copy link</button>
+			<button type="button" class="btn ghost small" title="Copy a link to the full page for this {i.type.toLowerCase()}" onclick={() => copyLink(i)}>Copy link</button>
 			<!-- Only when GitLab says this viewer may delete it: no dead button for everyone else. -->
 			{#if !ui.readOnly && i.canDelete}
 				<button
@@ -142,6 +163,11 @@
 		margin: 0;
 		font-size: 19px;
 		line-height: 1.3;
+	}
+	/* Full page: a larger title, like Linear's issue view */
+	.title.big {
+		font-size: 24px;
+		line-height: 1.25;
 	}
 	.title-btn {
 		all: unset;
