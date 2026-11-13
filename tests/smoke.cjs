@@ -253,7 +253,7 @@ step('the sidebar hides completely and comes back (button, tab, [ key, remembere
 	await p.locator('nav a[href="/v/my-issues"]').waitFor();
 });
 
-step('the URL keeps the open issue and the sidebar (?issue=, ?sidebar=)', async (p) => {
+step('the URL keeps the open issue; ?sidebar=hidden hides the sidebar', async (p) => {
 	const q = () => new URL(p.url()).searchParams;
 	const has = (name, value) =>
 		p.waitForFunction(([n, v]) => {
@@ -267,15 +267,17 @@ step('the URL keeps the open issue and the sidebar (?issue=, ?sidebar=)', async 
 	const id = q().get('issue');
 	await p.click('aside.detail button[aria-label="Close panel (Esc)"]');
 	await has('issue', undefined);
+	// Toggling the sidebar never writes it into the URL
+	await p.keyboard.press('[');
+	await p.waitForSelector('button[aria-label="Show sidebar"]');
+	await p.waitForTimeout(200);
+	if (q().has('sidebar')) throw new Error('toggling the sidebar put it in the URL');
+	await p.keyboard.press('[');
+	await p.waitForSelector('button[aria-label="Hide sidebar"]');
 	// A link straight to an issue, with the sidebar hidden
 	await open(p, `/v/my-issues?issue=${id}&sidebar=hidden`);
 	await p.waitForSelector('aside.detail article');
 	await p.waitForSelector('button[aria-label="Show sidebar"]');
-	// The sidebar toggle follows too
-	await p.keyboard.press('[');
-	await has('sidebar', undefined);
-	await p.keyboard.press('[');
-	await has('sidebar', 'hidden');
 	// A view change (?v=) keeps both
 	await p.click('button:has-text("Display")');
 	await p.click('[aria-label="Layout"] button:has-text("Board")');
@@ -289,10 +291,17 @@ step('the URL keeps the open issue and the sidebar (?issue=, ?sidebar=)', async 
 	await p.waitForSelector('aside.detail article');
 	await p.waitForSelector('button[aria-label="Show sidebar"]');
 	if (p.url() !== url) throw new Error(`reload changed the URL: ${url} → ${p.url()}`);
-	// An unknown issue says so; ?sidebar=shown overrides a hidden preference
-	await open(p, '/v/my-issues?issue=999999&sidebar=shown');
+	// Showing the sidebar yourself drops the param; hiding it again doesn't bring it back
+	await p.keyboard.press('[');
+	await has('sidebar', undefined);
+	await p.keyboard.press('[');
+	await p.waitForSelector('button[aria-label="Show sidebar"]');
+	await p.waitForTimeout(200);
+	if (q().has('sidebar')) throw new Error('toggling the sidebar put it back in the URL');
+	await p.keyboard.press('['); // shown again, as the steps after this expect
+	// An unknown issue says so
+	await open(p, '/v/my-issues?issue=999999');
 	await p.waitForSelector("text=That issue isn't on the board");
-	await p.waitForSelector('button[aria-label="Hide sidebar"]');
 	if (await p.locator('aside.detail article').count()) throw new Error('panel opened for an unknown issue');
 	// The epics list writes its own query string and must keep ours
 	await open(p, `/epics?sidebar=hidden&issue=${id}`);
@@ -321,7 +330,15 @@ step('an old matrix share link opens as a list with a notice', async (p) => {
 step('the kiosk shows config views and cannot write', async (p, ctx, browser) => {
 	const k = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 	const kp = await k.newPage();
-	await kp.goto(BASE + '/kiosk/' + (process.env.KIOSK_KEY || 'fake-kiosk-key-0123456789abcdef'));
+	await kp.goto(BASE + '/kiosk/' + (process.env.KIOSK_KEY || 'fake-kiosk-key-0123456789abcdef') + '?sidebar=hidden');
+	await kp.waitForSelector('html[data-ready]');
+	// ?sidebar=hidden is passed through the kiosk redirect and survives a reload
+	if (new URL(kp.url()).search !== '?sidebar=hidden') throw new Error(`kiosk redirect lost ?sidebar=hidden: ${kp.url()}`);
+	await kp.waitForSelector('button[aria-label="Show sidebar"]');
+	await kp.reload();
+	await kp.waitForSelector('html[data-ready]');
+	await kp.waitForSelector('button[aria-label="Show sidebar"]');
+	await kp.click('button[aria-label="Show sidebar"]');
 	await kp.waitForSelector('text=Kiosk · read-only');
 	// KIOSK_VIEWS lists "standup" (a prioritization tool) first, so "/" opens it
 	if (process.env.KIOSK_VIEWS?.startsWith('standup')) await kp.waitForSelector('[aria-label="Eisenhower matrix"]');

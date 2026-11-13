@@ -72,10 +72,16 @@
 	const selected = $derived(ui.selectedId ? (board.byId.get(ui.selectedId) ?? null) : null);
 	let navOpen = $state(false);
 	/**
-	 * Desktop: sidebar hidden completely for more room. Kept in the URL (?sidebar=hidden) so a
-	 * shared link opens the same way, and remembered per browser when you toggle it yourself.
+	 * Desktop: sidebar hidden completely for more room. Remembered per browser when you toggle it
+	 * yourself. A URL with ?sidebar=hidden (e.g. a kiosk screen) hides it without saving that.
 	 */
 	let navHidden = $state(false);
+	/**
+	 * The sidebar is hidden because the URL said so. The param then stays in the address bar
+	 * (through kiosk rotation and in-app navigation) so a reload keeps it hidden, until you
+	 * toggle the sidebar yourself.
+	 */
+	let navHiddenByUrl = $state(false);
 	const NAV_KEY = 'board-nav-hidden';
 	function storedNavHidden(): boolean {
 		try {
@@ -86,6 +92,7 @@
 	}
 	function setNavHidden(hidden: boolean) {
 		navHidden = hidden;
+		navHiddenByUrl = false;
 		try {
 			if (hidden) localStorage.setItem(NAV_KEY, '1');
 			else localStorage.removeItem(NAV_KEY);
@@ -382,15 +389,14 @@
 	const showPanel = $derived(!!selected && ui.panelOpen);
 
 	// ---- URL state (?issue=, ?sidebar=) --------------------------------------------------------
-	// The URL mirrors the open panel and the sidebar, so the address bar is always a link to what
-	// you see. Links you follow set them; links without them keep what you have open.
+	// The URL mirrors the open panel, so the address bar is always a link to what you see.
+	// ?sidebar=hidden is only read (see navHiddenByUrl): the sidebar is otherwise left to you.
 	let urlReady = $state(false);
 
 	/** Applies ?issue= and ?sidebar= from a URL we just arrived at. */
 	function applyUrl(url: URL, kind: 'enter' | 'popstate' | 'link') {
-		const side = readSidebarParam(url.searchParams);
-		// From a link it isn't saved: opening someone's link doesn't change your own preference.
-		if (side !== null) navHidden = side;
+		// From a link it isn't saved: opening a link doesn't change your own preference.
+		if (readSidebarParam(url.searchParams)) navHidden = navHiddenByUrl = true;
 		else if (kind === 'enter') navHidden = storedNavHidden();
 
 		const raw = url.searchParams.get(ISSUE_PARAM);
@@ -417,7 +423,7 @@
 		// page.url only to re-run after navigations; shallow replaceState leaves it as it was, so
 		// the address bar is what we compare with.
 		void page.url;
-		const state = { issue: showPanel ? ui.selectedId : null, sidebarHidden: navHidden };
+		const state = { issue: showPanel ? ui.selectedId : null, sidebarHidden: navHiddenByUrl && navHidden };
 		if (!urlReady) return;
 		const next = withShellState(new URL(location.href), state);
 		if (next) untrack(() => replaceState(next, page.state));

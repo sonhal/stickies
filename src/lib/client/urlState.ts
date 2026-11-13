@@ -4,8 +4,9 @@
  * - `?issue=<id>`: the detail panel is open on this item. The id is the number at the end of the
  *   GitLab global id (gid://gitlab/WorkItem/123 → 123), like `/epics/<id>`. A full reference
  *   (`my-team/api#12`, or `my-group&3` for an epic) is accepted too, for hand-written links.
- * - `?sidebar=hidden` / `?sidebar=shown`: whether the sidebar is shown. The board only ever writes
- *   `hidden` (shown is the default), but `shown` lets a link override someone's own preference.
+ * - `?sidebar=hidden`: opens with the sidebar hidden, e.g. on a kiosk screen. Optional: without it
+ *   the sidebar is as you left it. It isn't saved as your preference, and it stays in the URL
+ *   (so a reload keeps it) until you show the sidebar yourself.
  *
  * These ride along with whatever else a page keeps in its query string (`?v=` on views, the
  * epics list state), so pages that rewrite their query keep them with `keepShellParams`.
@@ -19,6 +20,7 @@ const SHELL_PARAMS = [ISSUE_PARAM, SIDEBAR_PARAM] as const;
 export interface ShellState {
 	/** Global id of the item open in the panel, or null */
 	issue: string | null;
+	/** Keep `?sidebar=hidden` in the URL (only while it came from the URL and still applies) */
 	sidebarHidden: boolean;
 }
 
@@ -38,10 +40,9 @@ export function findItemByParam(items: readonly WorkItem[], value: string | null
 	return items.find((i) => i.id === v || itemParam(i.id) === v) ?? null;
 }
 
-/** `?sidebar=`: true = hidden, false = shown, null = not in the URL (or not a value we know). */
-export function readSidebarParam(params: URLSearchParams): boolean | null {
-	const v = params.get(SIDEBAR_PARAM);
-	return v === 'hidden' ? true : v === 'shown' ? false : null;
+/** True when the URL asks for the sidebar to be hidden (`?sidebar=hidden`). */
+export function readSidebarParam(params: URLSearchParams): boolean {
+	return params.get(SIDEBAR_PARAM) === 'hidden';
 }
 
 /**
@@ -54,7 +55,6 @@ export function withShellState(url: URL, s: ShellState): URL | null {
 	const issue = s.issue ? itemParam(s.issue) : null;
 	if (issue) p.set(ISSUE_PARAM, issue);
 	else p.delete(ISSUE_PARAM);
-	// `shown` from an incoming link is honoured, then dropped once the state is ours to mirror.
 	if (s.sidebarHidden) p.set(SIDEBAR_PARAM, 'hidden');
 	else p.delete(SIDEBAR_PARAM);
 	return next.search === url.search ? null : next;

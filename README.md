@@ -24,10 +24,13 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   Past month / None), empty groups. Default views live in [`src/lib/views.config.ts`](src/lib/views.config.ts).
   Filters match all or any, and any filter can get alternatives ("Priority is High **or** due this week").
   Everyone can save their own views in their browser, share a view as a link, and export/import JSON.
-- **Links show what you see:** the address bar always holds the open issue and a hidden sidebar, so you
-  can copy it and share it. `?issue=123` opens the side panel on an item (the number at the end of its
-  GitLab id; a reference like `team/api%2312` works too), `?sidebar=hidden` (or `shown`) sets the sidebar.
-  They combine with view links (`?v=`) and the epics list's own parameters. The panel also has **Copy link**.
+- **Links to an issue:** the address bar always holds the open issue, so you can copy it and share it.
+  `?issue=123` opens the side panel on an item (the number at the end of its GitLab id; a reference like
+  `team/api%2312` works too). It combines with view links (`?v=`) and the epics list's own parameters.
+  The panel also has **Copy link**.
+- **`?sidebar=hidden`** (optional) opens the board with the sidebar hidden, e.g. for a wall screen:
+  `/kiosk/<KIOSK_KEY>?sidebar=hidden`. It isn't saved as anyone's preference, and stays in the URL through
+  kiosk rotation and reloads until someone shows the sidebar. Without it, the sidebar is as you left it.
 - **Layouts:** List, and Board (columns from any single-select field, status, people, parent or epic;
   optional swimlanes; drag to update).
 - **Prioritization:** named tools in their own sidebar section, each an instance of a *tool type*:
@@ -154,7 +157,8 @@ every request: if the access token expires within 60 s, refresh it (GitLab rotat
 
 Set `GITLAB_TOKEN` (a group access token with **`read_api` only**, Reporter role, with an expiry) and
 `KIOSK_KEY` (24+ random characters). Open `https://<your board>/kiosk/<KIOSK_KEY>` once on the screen. It
-stores a 30-day kiosk cookie and redirects to the board.
+stores a 30-day kiosk cookie and redirects to the board. Add `?sidebar=hidden` to that link for a
+full-width screen.
 
 - The kiosk is **always read-only**: write endpoints refuse kiosk sessions, and the board checks (via
   `GET /personal_access_tokens/self`) that `GITLAB_TOKEN` has exactly `read_api`; it refuses to load with

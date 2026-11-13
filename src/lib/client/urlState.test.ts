@@ -26,11 +26,11 @@ describe('issue links', () => {
 });
 
 describe('sidebar param', () => {
-	it('reads hidden / shown and ignores anything else', () => {
+	it('only hides for sidebar=hidden', () => {
 		expect(readSidebarParam(new URLSearchParams('sidebar=hidden'))).toBe(true);
 		expect(readSidebarParam(new URLSearchParams('sidebar=shown'))).toBe(false);
-		expect(readSidebarParam(new URLSearchParams('sidebar=maybe'))).toBeNull();
-		expect(readSidebarParam(new URLSearchParams(''))).toBeNull();
+		expect(readSidebarParam(new URLSearchParams('sidebar=maybe'))).toBe(false);
+		expect(readSidebarParam(new URLSearchParams(''))).toBe(false);
 	});
 });
 
@@ -45,7 +45,7 @@ describe('withShellState', () => {
 		expect(withShellState(new URL('http://x/?issue=123'), { issue: a.id, sidebarHidden: false })).toBeNull();
 	});
 	it('removes state that is no longer there', () => {
-		const next = withShellState(new URL('http://x/?issue=123&sidebar=shown&q=1'), { issue: null, sidebarHidden: false });
+		const next = withShellState(new URL('http://x/?issue=123&sidebar=hidden&q=1'), { issue: null, sidebarHidden: false });
 		expect(next?.search).toBe('?q=1');
 	});
 });
