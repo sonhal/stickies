@@ -13,6 +13,9 @@ import type { RankContext } from '$lib/query/rank';
 import type { ViewDefinition } from '$lib/query/types';
 import { settings } from '$lib/views.config';
 
+/** How many changes Ctrl/Cmd+Z can take back */
+const UNDO_MAX = 20;
+
 export class BoardState {
 	data = $state<BoardData>() as BoardData;
 	items = $state<WorkItem[]>([]);
@@ -25,6 +28,11 @@ export class BoardState {
 	private seq = 0;
 	/** The item as GitLab last confirmed it (load, refresh or a successful write): rollback target */
 	private confirmed = new Map<string, WorkItem>();
+	/**
+	 * Field changes made from this tab (saved, or still saving), oldest first, with the value that
+	 * takes each back. Writing the value that is already there is not a step.
+	 */
+	private undoStack: { id: string; key: WriteField; previous: WriteValue; ref: string }[] = [];
 
 	reg: FieldRegistry = $derived(this.data.registry);
 	byId: Map<string, WorkItem> = $derived(new Map(this.items.map((i) => [i.id, i])));
@@ -70,8 +78,43 @@ export class BoardState {
 	 * value. Newer writes to other fields of the same item are re-applied on top of a response.
 	 */
 	async update(id: string, key: WriteField, value: WriteValue): Promise<boolean> {
+		return this.write(id, key, value, true);
+	}
+
+	/**
+	 * Take back the last change that was saved from this tab (Ctrl/Cmd+Z): writes the field's
+	 * previous value. Says what happened in a toast. The undo itself is not remembered, so a second
+	 * undo goes one change further back instead of redoing.
+	 */
+	async undo(): Promise<boolean> {
+		let entry = this.undoStack.pop();
+		// Skip changes to items that are no longer loaded (closed long ago, moved out of the group).
+		while (entry && !this.byId.has(entry.id)) entry = this.undoStack.pop();
+		if (!entry) {
+			this.notify('Nothing to undo');
+			return false;
+		}
+		const ok = await this.write(entry.id, entry.key, entry.previous, false);
+		if (ok) this.notify(`Undone: ${entry.ref}`);
+		// Not saved (write() said why): keep it, so undo can be tried again.
+		else this.undoStack.push(entry);
+		return ok;
+	}
+
+	private async write(id: string, key: WriteField, value: WriteValue, undoable: boolean): Promise<boolean> {
 		const before = this.byId.get(id);
 		if (!before) return false;
+		// Remembered at once, not when GitLab answers: Ctrl+Z right after a change takes back that
+		// change even while it is still saving. Dropped again if the save fails.
+		const previous = currentWriteValue(before, key);
+		const undoEntry = undoable && JSON.stringify(previous) !== JSON.stringify(value) ? { id, key, previous, ref: before.ref } : null;
+		if (undoEntry) {
+			this.undoStack.push(undoEntry);
+			if (this.undoStack.length > UNDO_MAX) this.undoStack.shift();
+		}
+		const forget = () => {
+			if (undoEntry) this.undoStack = this.undoStack.filter((u) => u !== undoEntry);
+		};
 		const field = key === 'title' ? null : (this.fieldsByKey.get(key) ?? null);
 		const slot = `${id}\u0000${key}`;
 		const mySeq = ++this.seq;
@@ -96,6 +139,7 @@ export class BoardState {
 			const body = (await res.json().catch(() => null)) as { ok: boolean; item?: WorkItem; error?: string } | null;
 			if (!res.ok || !body?.ok || !body.item) {
 				rollback();
+				forget();
 				this.notify(body?.error ?? `Couldn't save (HTTP ${res.status})`, 'error');
 				return false;
 			}
@@ -108,6 +152,7 @@ export class BoardState {
 			return true;
 		} catch {
 			rollback();
+			forget();
 			this.notify("Couldn't reach the board server. Your change was undone.", 'error');
 			return false;
 		} finally {

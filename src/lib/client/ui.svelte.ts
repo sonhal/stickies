@@ -1,6 +1,7 @@
 /** Shell-wide UI state: selection, panel, palette, toasts. Shared through context. */
 import { getContext, setContext } from 'svelte';
 import type { FieldKey } from '$lib/fields/types';
+import type { NavDir } from './boardNav';
 
 export interface Toast {
 	id: number;
@@ -15,6 +16,17 @@ export interface CreatePrefill {
 	values?: Partial<Record<FieldKey, string>>;
 	/** Work item type name to start with, e.g. 'Epic' for "New epic". Default: Issue. */
 	type?: string;
+}
+
+/** Keyboard navigation a layout provides itself. */
+export interface LayoutNav {
+	/** Arrow keys / h j k l: select the next item in that direction */
+	move(dir: NavDir): void;
+	/**
+	 * Alt+←/→: move the selected item itself one column. Returns false when there is nothing to
+	 * move, so the key keeps its browser meaning.
+	 */
+	shift?(delta: 1 | -1): boolean;
 }
 
 let toastSeq = 0;
@@ -39,6 +51,13 @@ export class UiState {
 	filterRequest = $state(0);
 	/** Kiosk / read-only screen */
 	readOnly = $state(false);
+	/** The keyboard shortcut sheet (?) is showing */
+	shortcutsOpen = $state(false);
+	/**
+	 * Set by a layout that moves the selection in its own way (the board: by column and row).
+	 * The shell's key handler calls this instead of `move`. Cleared when the layout goes away.
+	 */
+	nav: LayoutNav | null = null;
 
 	open(id: string) {
 		this.selectedId = id;
