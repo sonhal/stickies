@@ -87,7 +87,7 @@
 		display: flex;
 		flex-direction: column;
 		/* Fits beside the matrix; long descriptions scroll inside the panel. */
-		max-height: calc(100vh - 120px);
+		max-height: calc(100vh / var(--zoom, 1) - 120px);
 		min-height: 320px;
 	}
 	.walk {

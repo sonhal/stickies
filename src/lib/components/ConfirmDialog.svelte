@@ -74,7 +74,7 @@
 
 <style>
 	.confirm {
-		width: min(440px, calc(100vw - 24px));
+		width: min(440px, calc(100vw / var(--zoom, 1) - 24px));
 		padding: 0;
 		border: 1px solid var(--border);
 		border-radius: 12px;

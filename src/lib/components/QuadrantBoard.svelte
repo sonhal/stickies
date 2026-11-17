@@ -105,7 +105,7 @@
 		/* Fill the screen below the header; each quadrant scrolls if it overflows. */
 		grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
 		gap: 10px;
-		height: calc(100vh - 170px);
+		height: calc(100vh / var(--zoom, 1) - 170px);
 		min-height: 520px;
 	}
 
@@ -261,6 +261,29 @@
 		.status-label {
 			display: none;
 		}
+	}
+	/*
+	 * Wall screens (?scale=, set by the app shell): the one-line card cuts most titles off once the
+	 * text is large, and a wall board has room to spare. Titles wrap to up to three lines instead,
+	 * with the status kept on the first line.
+	 */
+	:global(.scaled) .note {
+		height: auto;
+		min-height: 22px;
+		padding-block: 3px;
+		align-items: flex-start;
+	}
+	:global(.scaled) .title {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		white-space: normal;
+		overflow-wrap: anywhere;
+		line-height: 1.3;
+	}
+	:global(.scaled) .status {
+		line-height: 1.5;
 	}
 	.empty {
 		margin: 0;

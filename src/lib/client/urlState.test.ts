@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { item } from '$lib/testing/factory';
-import { findItemByParam, issuePath, issueUrl, itemParam, keepShellParams, readSidebarParam, withSidebarParam } from './urlState';
+import { findItemByParam, issuePath, issueUrl, itemParam, keepShellParams, readScaleParam, readSidebarParam, withScaleParam, withSidebarParam } from './urlState';
 
 const a = item({}, { id: 'gid://gitlab/WorkItem/123', ref: 'team/api#7' });
 const b = item({}, { id: 'gid://gitlab/WorkItem/456', ref: 'team/web#7' });
@@ -46,5 +46,36 @@ describe('sidebar param', () => {
 	it('is carried into a page-built query string', () => {
 		expect(keepShellParams('q=new', new URLSearchParams('q=old&sidebar=hidden'))).toBe('q=new&sidebar=hidden');
 		expect(keepShellParams('', new URLSearchParams('q=old&issue=1'))).toBe('');
+	});
+});
+
+describe('scale param', () => {
+	const read = (qs: string) => readScaleParam(new URLSearchParams(qs));
+	it('reads a positive number, clamped and rounded', () => {
+		expect(read('scale=2.5')).toBe(2.5);
+		expect(read('scale=2')).toBe(2);
+		expect(read('scale=1.333333')).toBe(1.33);
+		expect(read('scale=10')).toBe(4);
+		expect(read('scale=0.1')).toBe(0.5);
+	});
+	it('ignores anything that is not a positive number', () => {
+		for (const qs of ['', 'scale=', 'scale=big', 'scale=0', 'scale=-2', 'scale=Infinity', 'scale=1e999', 'scale=%20'])
+			expect(read(qs)).toBeNull();
+	});
+	it('sets it, drops it at 1, and keeps other params', () => {
+		expect(withScaleParam(new URL('http://x/v/list?v=abc'), 2.5)?.search).toBe('?v=abc&scale=2.5');
+		expect(withScaleParam(new URL('http://x/?scale=2&q=1'), 1)?.search).toBe('?q=1');
+		expect(withScaleParam(new URL('http://x/?scale=2'), 3)?.search).toBe('?scale=3');
+	});
+	it('returns null when the URL already matches', () => {
+		expect(withScaleParam(new URL('http://x/?v=abc'), 1)).toBeNull();
+		expect(withScaleParam(new URL('http://x/?scale=2.5'), 2.5)).toBeNull();
+		expect(withScaleParam(new URL('http://x/?scale=2.50'), 2.5)).toBeNull();
+	});
+	it('is carried into a page-built query string with the sidebar param', () => {
+		expect(keepShellParams('q=new', new URLSearchParams('sidebar=hidden&scale=2.5'))).toBe('q=new&sidebar=hidden&scale=2.5');
+		expect(keepShellParams('', new URLSearchParams('scale=1'))).toBe('');
+		expect(keepShellParams('', new URLSearchParams('scale=junk'))).toBe('');
+		expect(keepShellParams('scale=3', new URLSearchParams('scale=2'))).toBe('scale=3');
 	});
 });

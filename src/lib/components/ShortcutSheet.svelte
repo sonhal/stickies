@@ -70,11 +70,11 @@
 	}
 	.sheet {
 		position: fixed;
-		top: 8vh;
+		top: calc(8vh / var(--zoom, 1));
 		left: 50%;
 		transform: translateX(-50%);
-		width: min(820px, calc(100vw - 24px));
-		max-height: 84vh;
+		width: min(820px, calc(100vw / var(--zoom, 1) - 24px));
+		max-height: calc(84vh / var(--zoom, 1));
 		z-index: 51;
 		display: flex;
 		flex-direction: column;

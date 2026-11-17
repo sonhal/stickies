@@ -94,10 +94,10 @@
 	}
 	.palette {
 		position: fixed;
-		top: 12vh;
+		top: calc(12vh / var(--zoom, 1));
 		left: 50%;
 		transform: translateX(-50%);
-		width: min(640px, calc(100vw - 24px));
+		width: min(640px, calc(100vw / var(--zoom, 1) - 24px));
 		z-index: 51;
 		background: var(--surface-2);
 		border: 1px solid var(--border);
@@ -116,7 +116,7 @@
 		outline: none;
 	}
 	.list {
-		max-height: 52vh;
+		max-height: calc(52vh / var(--zoom, 1));
 		overflow-y: auto;
 		padding: 6px;
 	}

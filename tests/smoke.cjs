@@ -434,6 +434,40 @@ step('the kiosk shows config views and cannot write', async (p, ctx, browser) =>
 	await k.close();
 });
 
+step('wall screen: ?scale= zooms the board, fills the screen, and survives redirect and navigation', async (p, ctx, browser) => {
+	// A 4K screen at 1x, like an 80" TV driven by a kiosk browser
+	const k = await browser.newContext({ viewport: { width: 3840, height: 2160 } });
+	const kp = await k.newPage();
+	await kp.goto(BASE + '/kiosk/' + (process.env.KIOSK_KEY || 'fake-kiosk-key-0123456789abcdef') + '?sidebar=hidden&scale=2.5&other=x');
+	await kp.waitForSelector('html[data-ready]');
+	if (new URL(kp.url()).search !== '?sidebar=hidden&scale=2.5') throw new Error(`kiosk redirect: ${kp.url()}`);
+	const shell = async () =>
+		kp.evaluate(() => {
+			const s = document.querySelector('.shell');
+			const r = s.getBoundingClientRect();
+			return { zoom: getComputedStyle(s).zoom, h: r.height, w: r.width, scaled: s.classList.contains('scaled'), sh: document.documentElement.scrollHeight };
+		});
+	let m = await shell();
+	if (m.zoom !== '2.5' || !m.scaled) throw new Error(`not zoomed: ${JSON.stringify(m)}`);
+	// 100vh is divided by the zoom: the shell fills the screen exactly, with no page scroll
+	if (Math.abs(m.h - 2160) > 2 || Math.abs(m.w - 3840) > 2 || m.sh > 2162) throw new Error(`shell doesn't fit the screen: ${JSON.stringify(m)}`);
+	// Kept through in-app navigation (links don't carry it) and a reload
+	await kp.evaluate(() => document.querySelector('.nav-tab')?.click());
+	await kp.locator('nav a[href^="/v/"]').first().click();
+	await kp.waitForURL((u) => u.pathname.startsWith('/v/'));
+	await kp.waitForFunction(() => new URLSearchParams(location.search).get('scale') === '2.5');
+	await kp.reload();
+	await kp.waitForSelector('html[data-ready]');
+	m = await shell();
+	if (m.zoom !== '2.5') throw new Error(`scale lost on reload: ${kp.url()}`);
+	// Opened fresh without it: normal size
+	await kp.goto(BASE + '/');
+	await kp.waitForSelector('html[data-ready]');
+	m = await shell();
+	if (m.zoom !== '1' || m.scaled) throw new Error(`still zoomed without ?scale: ${JSON.stringify(m)}`);
+	await k.close();
+});
+
 (async () => {
 	const browser = await chromium.launch();
 	const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });

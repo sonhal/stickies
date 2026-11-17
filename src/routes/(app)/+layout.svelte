@@ -17,7 +17,7 @@
 	import ShortcutSheet from '$lib/components/ShortcutSheet.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { deleteText } from '$lib/client/deleteText';
-	import { readSidebarParam, withSidebarParam } from '$lib/client/urlState';
+	import { readScaleParam, readSidebarParam, withScaleParam, withSidebarParam } from '$lib/client/urlState';
 	import type { Command } from '$lib/client/commands';
 	import type { NavDir } from '$lib/client/boardNav';
 	import { appliesTo, closedKind } from '$lib/fields/registry';
@@ -390,28 +390,43 @@
 	// Not for the item whose full page is showing: the page already is its panel.
 	const showPanel = $derived(!!selected && ui.panelOpen && selected.id !== ui.pageItemId);
 
-	// ---- ?sidebar=hidden --------------------------------------------------------------------------
+	// ---- ?sidebar=hidden and ?scale= ---------------------------------------------------------------
 	// Only read (see navHiddenByUrl). The side panel isn't in the URL: links go to /issue/<id>.
 	let urlReady = $state(false);
+
+	/**
+	 * Wall screens: ?scale=2.5 draws everything 2.5× larger (CSS zoom on the shell, like the browser's
+	 * own zoom). Read on the server too, so the first paint is already the right size. Once set it
+	 * holds for in-app navigation (sidebar links and kiosk rotation don't carry it) until a page is
+	 * opened fresh without it.
+	 */
+	// svelte-ignore state_referenced_locally
+	let scale = $state(readScaleParam(page.url.searchParams) ?? 1);
 
 	afterNavigate((nav) => {
 		if (!nav.to) return;
 		// From a link it isn't saved: opening a link doesn't change your own preference.
 		if (readSidebarParam(nav.to.url.searchParams)) navHidden = navHiddenByUrl = true;
 		else if (nav.type === 'enter') navHidden = storedNavHidden();
+		const s = readScaleParam(nav.to.url.searchParams);
+		if (s !== null) scale = s;
+		else if (nav.type === 'enter') scale = 1;
 		urlReady = true;
 	});
 
-	// Keeps ?sidebar=hidden in the address bar while it's what hides the sidebar, so in-app
-	// navigation (and kiosk rotation) followed by a reload stays full-width.
+	// Keeps ?sidebar=hidden (while it's what hides the sidebar) and ?scale= in the address bar, so
+	// in-app navigation (and kiosk rotation) followed by a reload keeps the wall-screen layout.
 	$effect(() => {
 		// page.url only to re-run after navigations; shallow replaceState leaves it as it was, so
 		// the address bar is what we compare with.
 		void page.url;
 		const keep = navHiddenByUrl && navHidden;
+		const s = scale;
 		if (!urlReady) return;
-		const next = withSidebarParam(new URL(location.href), keep);
-		if (next) untrack(() => replaceState(next, page.state));
+		const here = new URL(location.href);
+		const withSidebar = withSidebarParam(here, keep) ?? here;
+		const next = withScaleParam(withSidebar, s) ?? withSidebar;
+		if (next.search !== here.search) untrack(() => replaceState(next, page.state));
 	});
 
 	// ---- Command palette ----------------------------------------------------------------------------
@@ -487,7 +502,19 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div class="shell" class:with-panel={showPanel && ui.layout !== 'matrix'} class:nav-open={navOpen} class:nav-hidden={navHidden}>
+<!--
+	--zoom lets anything sized in vh/vw divide by the zoom: CSS zoom scales those too, so 100vh
+	would otherwise be 2.5 screens tall. Media queries still see the real screen width.
+-->
+<div
+	class="shell"
+	class:with-panel={showPanel && ui.layout !== 'matrix'}
+	class:nav-open={navOpen}
+	class:nav-hidden={navHidden}
+	class:scaled={scale > 1}
+	style:zoom={scale === 1 ? undefined : scale}
+	style:--zoom={scale === 1 ? undefined : scale}
+>
 	<div class="nav" inert={navHidden && !navOpen ? true : undefined}>
 		<Sidebar
 			viewer={data.viewer}
@@ -591,18 +618,18 @@
 	.shell {
 		display: grid;
 		grid-template-columns: 236px minmax(0, 1fr);
-		height: 100vh;
+		height: calc(100vh / var(--zoom, 1));
 		overflow: hidden;
 	}
 	.shell.with-panel {
-		grid-template-columns: 236px minmax(0, 1fr) minmax(360px, 30vw);
+		grid-template-columns: 236px minmax(0, 1fr) minmax(360px, calc(30vw / var(--zoom, 1)));
 	}
 	/* Sidebar hidden: the content takes the full width */
 	.shell.nav-hidden {
 		grid-template-columns: 0 minmax(0, 1fr);
 	}
 	.shell.nav-hidden.with-panel {
-		grid-template-columns: 0 minmax(0, 1fr) minmax(360px, 30vw);
+		grid-template-columns: 0 minmax(0, 1fr) minmax(360px, calc(30vw / var(--zoom, 1)));
 	}
 	.nav-hidden .nav {
 		visibility: hidden;
@@ -678,7 +705,7 @@
 		top: 0;
 		right: 0;
 		bottom: 0;
-		width: min(440px, 100vw);
+		width: min(440px, calc(100vw / var(--zoom, 1)));
 		z-index: 30;
 		box-shadow: var(--shadow-pop);
 	}
@@ -705,7 +732,7 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
-		max-width: min(520px, 92vw);
+		max-width: min(520px, calc(92vw / var(--zoom, 1)));
 		padding: 9px 10px 9px 14px;
 		border-radius: 8px;
 		background: var(--text-primary);
@@ -737,7 +764,7 @@
 			top: 0;
 			right: 0;
 			bottom: 0;
-			width: min(440px, 100vw);
+			width: min(440px, calc(100vw / var(--zoom, 1)));
 			z-index: 30;
 			box-shadow: var(--shadow-pop);
 		}

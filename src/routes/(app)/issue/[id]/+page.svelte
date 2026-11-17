@@ -162,7 +162,7 @@
 	.issue-page {
 		display: flex;
 		flex-direction: column;
-		min-height: calc(100vh - 36px);
+		min-height: calc(100vh / var(--zoom, 1) - 36px);
 	}
 	.where {
 		display: flex;

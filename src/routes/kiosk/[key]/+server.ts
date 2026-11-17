@@ -2,13 +2,14 @@ import { error, redirect } from '@sveltejs/kit';
 import { serverConfig } from '$lib/server/config';
 import { writeSession } from '$lib/server/auth';
 import { safeEqual } from '$lib/server/session';
-import { SIDEBAR_PARAM, readSidebarParam } from '$lib/client/urlState';
+import { keepShellParams } from '$lib/client/urlState';
 import type { RequestHandler } from './$types';
 
 /**
  * Open /kiosk/<KIOSK_KEY> once on the wall screen. It stores a 30-day kiosk cookie and
- * redirects to the board, so the key doesn't stay in the address bar. `?sidebar=hidden` is passed
- * on (only that: nothing else from the query is forwarded), for a full-width wall screen.
+ * redirects to the board, so the key doesn't stay in the address bar. `?sidebar=hidden` and
+ * `?scale=` are passed on (only those: nothing else from the query is forwarded), for a
+ * full-width wall screen drawn large enough to read from across the room.
  * The kiosk sees what GITLAB_TOKEN can see, so scope that token to the group only.
  */
 export const GET: RequestHandler = ({ params, cookies, url }) => {
@@ -17,5 +18,6 @@ export const GET: RequestHandler = ({ params, cookies, url }) => {
 		error(404, 'Not found');
 	}
 	writeSession(cookies, cfg, { v: 1, kind: 'kiosk', issuedAt: Date.now() });
-	redirect(303, readSidebarParam(url.searchParams) ? `/?${SIDEBAR_PARAM}=hidden` : '/');
+	const qs = keepShellParams('', url.searchParams);
+	redirect(303, qs ? `/?${qs}` : '/');
 };

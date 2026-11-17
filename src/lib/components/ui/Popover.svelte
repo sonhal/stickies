@@ -80,8 +80,8 @@
 		top: calc(100% + 6px);
 		left: 0;
 		z-index: 40;
-		max-width: calc(100vw - 24px);
-		max-height: min(70vh, 560px);
+		max-width: calc(100vw / var(--zoom, 1) - 24px);
+		max-height: min(calc(70vh / var(--zoom, 1)), 560px);
 		overflow: auto;
 		background: var(--surface-2);
 		border: 1px solid var(--border);

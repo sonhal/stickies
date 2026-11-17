@@ -36,6 +36,9 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
 - **`?sidebar=hidden`** (optional) opens the board with the sidebar hidden, e.g. for a wall screen:
   `/kiosk/<KIOSK_KEY>?sidebar=hidden`. It isn't saved as anyone's preference, and stays in the URL through
   kiosk rotation and reloads until someone shows the sidebar. Without it, the sidebar is as you left it.
+- **`?scale=2.5`** (optional) draws the whole board 2.5× larger, for a big screen read from across the
+  room (see [Large screens](#large-screens-scale)). It works like `?sidebar=hidden`: it isn't saved, and
+  stays in the URL through navigation, kiosk rotation and reloads.
 - **Layouts:** List, and Board (columns from any single-select field, status, people, parent or epic;
   optional swimlanes; drag to update).
 - **Prioritization:** named tools in their own sidebar section, each an instance of a *tool type*:
@@ -172,6 +175,31 @@ full-width screen.
   in that order. The first one is the kiosk's home page; it can switch between them from the sidebar and
   rotate through them (`KIOSK_ROTATE_SECONDS`). No personal views, nothing in storage.
 - Unset `KIOSK_KEY` to turn kiosk mode off; existing kiosk cookies stop working immediately.
+
+#### Large screens: `?scale=`
+
+A TV at its native resolution draws the board at laptop size: on an 80" 4K screen a card title is about
+5 mm tall. Add `?scale=<factor>` to the kiosk link (both parameters are passed through the redirect):
+
+```
+https://<your board>/kiosk/<KIOSK_KEY>?sidebar=hidden&scale=2.5
+```
+
+- Everything gets larger, on every view, like the browser's own zoom, and the board still fits the screen
+  without scrolling. The screen sees `width / scale` pixels: 3840 / 2.5 = 1536, about a laptop.
+- On a scaled screen, matrix cards wrap long titles onto up to three lines instead of cutting them off.
+- Accepted range 0.5–4. Without the parameter, or with `scale=1`, nothing changes.
+
+| Screen | Viewing distance | Start with |
+| --- | --- | --- |
+| 80" 4K | 3–4 m | `scale=2.5` (title ≈ 14 mm); `3` if it's still hard to read |
+| 80" 4K | 2 m (standup) | `scale=2` |
+| 55–65" 4K | 2–3 m | `scale=2` |
+| 1080p TV | any | `scale=1.25`–`1.5` (1080p already draws everything twice as large as 4K) |
+
+Higher scales leave fewer pixels: at `scale=3` a 4K screen is 1280 × 720, so a quadrant with many issues
+starts to scroll, and a Board view with many columns scrolls sideways. Layout breakpoints (the
+narrow-screen layouts) still follow the real screen width, so a scaled 4K screen always gets the wide layout.
 
 ## Views
 
