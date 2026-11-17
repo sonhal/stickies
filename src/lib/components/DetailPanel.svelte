@@ -30,7 +30,7 @@
 		page?: boolean;
 		/** Parents and children become links to these paths (the full page) instead of onopen */
 		hrefFor?: (id: string) => string;
-		/** Page only: a control next to the "Sub-issues" heading (e.g. "+ Add sub-issue") */
+		/** A control next to the "Child items" heading, or on its own when there are none (e.g. "+ Add task") */
 		childAction?: Snippet<[WorkItem]>;
 		/** Panel only: link to the item's full page, shown as an expand button in the header */
 		pageHref?: string;
@@ -126,11 +126,11 @@
 {/snippet}
 
 {#snippet childrenBlock()}
-	{#if page && !children.length}
+	{#if !children.length && (childAction || (page && childrenElsewhere))}
 		<!-- Like Linear: no empty heading, just a quiet "+ Add sub-issues" under the description -->
 		<div class="add-sub">
 			{@render childAction?.(item)}
-			{#if childrenElsewhere}
+			{#if page && childrenElsewhere}
 				<p class="elsewhere muted">{childrenElsewhere} sub-item{childrenElsewhere === 1 ? '' : 's'} in GitLab that aren't on the board (closed a while ago, or not visible to you).</p>
 			{/if}
 		</div>
@@ -139,7 +139,7 @@
 			<h3>
 				Child items
 				<span class="muted">{#if page && children.length}{childrenDone}/{children.length}{:else}{children.length}{/if}</span>
-				{#if page && childAction}<span class="spacer"></span>{@render childAction(item)}{/if}
+				{#if childAction}<span class="spacer"></span>{@render childAction(item)}{/if}
 			</h3>
 			{#each children as c (c.id)}
 				{#if hrefFor}
@@ -447,6 +447,10 @@
 	}
 	.add-sub {
 		margin-left: -7px;
+	}
+	/* Read-only, or a type that holds nothing (a task): the action draws nothing, so no empty gap */
+	.add-sub:empty {
+		display: none;
 	}
 	.add-sub .elsewhere {
 		margin-left: 7px;

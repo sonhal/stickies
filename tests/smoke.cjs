@@ -337,6 +337,12 @@ step("child items follow GitLab's hierarchy: epic → epic | issue, issue → ta
 	// An issue offers tasks: "New task" with the issue as parent, and only issues as possible parents
 	await open(p, '/v/my-issues');
 	await p.locator('.row .hit').first().click();
+	// The side panel offers it too, with the issue preset as parent
+	await p.locator('aside.detail button:has-text("+ Add task")').click();
+	await p.waitForSelector('dialog[open] >> text=New task');
+	if (!(await p.locator('dialog[open] select').last().inputValue()).startsWith('gid://gitlab/WorkItem/')) throw new Error('panel task not preset under its issue');
+	await p.keyboard.press('Escape');
+	await p.waitForSelector('dialog[open]', { state: 'detached' });
 	await p.click('aside.detail a[aria-label="Open as page"]');
 	await p.waitForSelector('article.page');
 	const issueId = new URL(p.url()).pathname.split('/').pop();
