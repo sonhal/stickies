@@ -1,0 +1,9 @@
+.git
+node_modules
+build
+.svelte-kit
+.env
+.env.*
+!.env.example
+introspect-out
+smoke-failure-*.png
