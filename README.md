@@ -114,6 +114,7 @@ effort, weight and status), to see how views and matrices look with real volume.
 | `WRITE_RATE_PER_MINUTE` | `60` | Writes per signed-in user per minute. |
 | `GITLAB_ITEMS_MODE` | `group` | `group`: one `group.workItems(includeDescendants)` query. `projects`: one query per project, if your GitLab's group query doesn't return project issues (the introspection script tells you). |
 | `GITLAB_LABEL_FILTER` | | Only items that have ALL these labels (comma-separated titles). |
+| `BOARD_VERSION` | git commit | **Build time.** The version shown at the bottom of the sidebar. By default the short commit hash of the checkout being built (`-dirty` if it has uncommitted changes); set it when building without a `.git` directory, e.g. `BOARD_VERSION=$(git rev-parse --short HEAD) npm run build` or a Docker build arg. |
 
 ## Sign-in and token scopes
 
