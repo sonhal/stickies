@@ -1,5 +1,6 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
+	import { page } from '$app/state';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { getBoard } from '$lib/client/board.svelte';
 	import {
@@ -18,6 +19,7 @@
 	import FieldEditor from '$lib/components/FieldEditor.svelte';
 	import { getUi } from '$lib/client/ui.svelte';
 	import type { FieldKey } from '$lib/fields/types';
+	import { pauseAfterSelect, pauseAfterToggle, readCycleParam, type CyclePause } from '$lib/client/autoCycle';
 
 	interface Props {
 		view: ViewDefinition;
@@ -95,8 +97,69 @@
 		if (walk.length === 0) return;
 		const next =
 			walkIndex === -1 ? (delta === 1 ? 0 : walk.length - 1) : (walkIndex + delta + walk.length) % walk.length;
-		onselect(walk[next].id);
+		pick(walk[next].id);
 	}
+
+	/** Every selection made here goes through this, so the cycle's countdown restarts on it. */
+	function pick(id: string | null) {
+		onselect(id);
+		cycleRun++;
+	}
+
+	// ---- Auto-cycle (?cycle=<seconds>, see $lib/client/autoCycle.ts) ----------------------------
+	const cycleSeconds = $derived(readCycleParam(page.url.searchParams));
+	let cyclePause = $state<CyclePause>(null);
+	/** Bumped on every pick and tick: restarts the countdown (and its progress bar). */
+	let cycleRun = $state(0);
+	let cycleStarted = false;
+
+	// A pick resumes after a close; closing (× / Esc, nothing selected) pauses.
+	$effect(() => {
+		const id = selectedId;
+		if (!cycleSeconds) return;
+		untrack(() => {
+			if (id === null && !cycleStarted) return; // not started yet: the effect below starts it
+			cyclePause = pauseAfterSelect(cyclePause, id);
+		});
+	});
+
+	// Start on the first issue as soon as there is one, unless something is already selected.
+	$effect(() => {
+		if (!cycleSeconds || cycleStarted || walk.length === 0) return;
+		cycleStarted = true;
+		untrack(() => {
+			if (selectedId === null) step(1);
+		});
+	});
+
+	/** Someone is using the screen (typing, a picker or dialog, the full side panel): don't move. */
+	function cycleHeld(): boolean {
+		if (ui.paletteOpen || ui.createOpen || ui.shortcutsOpen || ui.deleteRequest || ui.panelOpen) return true;
+		const el = document.activeElement as HTMLElement | null;
+		if (el && (['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName) || el.isContentEditable)) return true;
+		return !!document.querySelector('[role="dialog"], [role="alertdialog"], dialog[open]');
+	}
+
+	$effect(() => {
+		void selectedId;
+		void cycleRun;
+		if (!cycleSeconds || cyclePause) return;
+		const t = setTimeout(() => {
+			if (cycleHeld()) cycleRun++; // try again after another full interval
+			else step(1);
+		}, cycleSeconds * 1000);
+		return () => clearTimeout(t);
+	});
+
+	function toggleCycle() {
+		cyclePause = pauseAfterToggle(cyclePause);
+		if (cyclePause === null && selectedId === null) step(1);
+		else cycleRun++;
+	}
+
+	const cycle = $derived(
+		cycleSeconds ? { seconds: cycleSeconds, paused: cyclePause !== null, run: cycleRun, ontoggle: toggleCycle } : null
+	);
 
 	function onWindowKey(e: KeyboardEvent) {
 		if (!walkKeys) return;
@@ -104,7 +167,11 @@
 		if (el && (['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName) || el.isContentEditable)) return;
 		if (el?.closest('[role="dialog"]')) return;
 		if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
-		if (e.key === 'ArrowRight' || e.key === 'j') {
+		if (e.key === ' ' && cycleSeconds) {
+			// Also keeps Space from "clicking" the focused card.
+			e.preventDefault();
+			toggleCycle();
+		} else if (e.key === 'ArrowRight' || e.key === 'j') {
 			e.preventDefault();
 			step(1);
 		} else if (e.key === 'ArrowLeft' || e.key === 'k') {
@@ -152,7 +219,7 @@
 			{statusOf}
 			{isActive}
 			{selectedId}
-			onselect={(i) => onselect(i.id)}
+			onselect={(i) => pick(i.id)}
 		/>
 	</div>
 
@@ -168,7 +235,8 @@
 			total={walk.length}
 			onprev={() => step(-1)}
 			onnext={() => step(1)}
-			onclose={() => onselect(null)}
+			onclose={() => pick(null)}
+			{cycle}
 		>
 			{#if selected && !ui.readOnly}
 				<dl class="edit-facts">
@@ -203,7 +271,7 @@
 			{isActive}
 			note={missingNote}
 			noteTitle="Missing"
-			onselect={(i) => onselect(i.id)}
+			onselect={(i) => pick(i.id)}
 		/>
 	</section>
 {/if}
