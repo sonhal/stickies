@@ -401,6 +401,11 @@ npm test          # unit tests (vitest)
 npm run check     # svelte-check / TypeScript
 ```
 
+CI (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main`, as three parallel jobs:
+`npm run check -- --fail-on-warnings`, `npm test`, and a production build followed by the Playwright smoke
+test (`tests/smoke.cjs`) against `scripts/fake-gitlab.mjs`. A failed smoke run uploads its screenshots and
+server logs as the `smoke-failure` artifact.
+
 Unit tests cover: field resolution (renamed field, removed option, reordered options, unknown type),
 the matrix split with 2/3/4/7 options and rank direction, filter/group/sort and the completed window,
 view validation, migration and fuzzing, share links, localStorage views (corrupt and blocked storage), the
