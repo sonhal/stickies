@@ -9,6 +9,7 @@
 	import DetailPanel from './DetailPanel.svelte';
 	import FieldEditor from './FieldEditor.svelte';
 	import DescriptionEditor from './DescriptionEditor.svelte';
+	import Comments from './Comments.svelte';
 
 	/**
 	 * The detail panel with inline editing and a conflict notice. `page` draws it as the full
@@ -142,6 +143,7 @@
 	{/snippet}
 	{#snippet value(f, i)}<FieldEditor key={f.key} item={i} />{/snippet}
 	{#snippet description(i, read)}{#key i.id}<DescriptionEditor item={i} {read} />{/key}{/snippet}
+	{#snippet comments(i)}{#if !ui.readOnly}{#key i.id}<Comments item={i} />{/key}{/if}{/snippet}
 	{#snippet propsActions(i)}
 		<!-- As in Linear's Properties header: copy the link, copy the ID -->
 		<button type="button" class="btn ghost small icon" onclick={() => copyLink(i)} title="Copy link" aria-label="Copy link">

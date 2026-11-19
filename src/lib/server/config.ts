@@ -90,9 +90,11 @@ export function serverConfig(): ServerConfig {
 	if (itemsMode !== 'group' && itemsMode !== 'projects') {
 		throw new ConfigError('GITLAB_ITEMS_MODE must be "group" or "projects".');
 	}
-	const kioskViews = (env.KIOSK_VIEWS ?? 'standup')
+	const kioskViews = (env.KIOSK_VIEWS ?? 'priority-effort')
 		.split(',')
 		.map((v) => v.trim())
+		// "standup" was the Eisenhower tool, now removed: a kiosk still configured for it gets its successor
+		.map((v) => (v === 'standup' ? 'priority-effort' : v))
 		.filter(Boolean);
 
 	cached = {
@@ -110,7 +112,7 @@ export function serverConfig(): ServerConfig {
 		closedDaysMax: Math.min(365, num(env.CLOSED_DAYS_MAX, 30)),
 		itemsMax: Math.min(20_000, Math.floor(num(env.ITEMS_MAX, 5000, 1))),
 		itemsMode: itemsMode as 'group' | 'projects',
-		kioskViews: kioskViews.length ? kioskViews : ['standup'],
+		kioskViews: kioskViews.length ? kioskViews : ['priority-effort'],
 		kioskRotateSeconds: num(env.KIOSK_ROTATE_SECONDS, 0),
 		writeRatePerMinute: Math.max(1, num(env.WRITE_RATE_PER_MINUTE, 60, 1))
 	};

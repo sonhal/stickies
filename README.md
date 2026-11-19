@@ -2,7 +2,7 @@
 
 A Linear-like board for a GitLab group's work items, built with SvelteKit 2 and Svelte 5.
 Views show issues as a **List** or a **Board** (kanban). A separate **Prioritization** section shows them
-through prioritization frameworks: the standup **Eisenhower matrix** today, more tools later.
+through prioritization frameworks: **Priority × effort** today, more tools later.
 Everyone signs in with their own GitLab account, sees only what GitLab lets them see, and can edit
 issues from the board. A wall screen can run a read-only **kiosk**.
 
@@ -10,7 +10,7 @@ issues from the board. A wall screen can run a read-only **kiosk**.
 
 | | |
 |---|---|
-| ![Board](docs/screenshots/board-light.png) | ![Eisenhower matrix](docs/screenshots/matrix-dark.png) |
+| ![Board](docs/screenshots/board-light.png) | ![Priority × effort matrix](docs/screenshots/matrix-dark.png) |
 | ![Detail panel](docs/screenshots/panel-dark.png) | ![Command palette](docs/screenshots/palette-light.png) |
 | ![Epics list](docs/screenshots/epics-light.png) | ![OR filters](docs/screenshots/filters-dark.png) |
 | ![Keyboard shortcuts](docs/screenshots/shortcuts-light.png) | ![Command palette, dark](docs/screenshots/palette-dark.png) |
@@ -48,16 +48,24 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
 - **Layouts:** List, and Board (columns from any single-select field, status, people, parent or epic;
   optional swimlanes; drag to update).
 - **Prioritization:** named tools in their own sidebar section, each an instance of a *tool type*:
-  **Eisenhower** (urgent × important → Do / Schedule / Delegate / Drop, with the standup walk-through and
-  epic colors) and **Value vs effort** (Quick wins / Big bets / Fill-ins / Reconsider). Axes come from any
+  **Value vs effort** (Quick wins / Big bets / Fill-ins / Reconsider, with the walk-through and epic colors).
+  The board standardizes on **Priority × effort**: the default instance takes value from Priority and effort
+  from Effort. (The Eisenhower matrix, which took urgency from weight, was removed.) Axes come from any
   ordered field. Instances live in [`src/lib/prioritization.config.ts`](src/lib/prioritization.config.ts);
   see [Prioritization tools](#prioritization-tools).
 - **Editing:** status, any custom field, assignees, parent epic, title, description (full Markdown, in the side
   panel), weight, start/due date, labels (scoped labels stay exclusive), milestone, iteration, and *create issue* or *create epic* (in the group) pre-filled
-  from the current view.
+  from the current view. The create dialog asks for **Priority** and **Effort** (the fields the
+  prioritization tools use as value and effort axes), so a new issue lands on the matrix right away.
   Changes show at once and roll back with a message if GitLab refuses them.
   **Delete** an issue or epic from the side panel, the palette or `⌘/Ctrl Backspace`, always after a
   confirmation, and only offered when GitLab says you may (normally project Owners).
+- **Comments:** the issue page and the side panel show an item's GitLab comments under the description
+  (threads oldest first, replies indented, internal notes marked), and you can add a comment or reply
+  (`⌘/Ctrl Enter` sends). Loaded from GitLab with your own token when you open the item; system notes
+  ("changed the status") are left out. Bodies are shown as plain text, never as HTML, and quick actions in
+  a comment (`/close`, `/move` …) are escaped so GitLab shows them instead of running them, as for
+  descriptions. The 100 most recent threads are shown; older ones link to GitLab. Not on the kiosk.
 - **Teams = projects, epics with progress:** the sidebar lists projects with open work and open epics;
   `/epics` lists epics with progress from GitLab's rolled-up counts, with search, filters (status, assignee,
   label), sortable columns and grouping (status, assignee, parent epic), kept in the URL; `/epics/<id>` shows an epic's issues
@@ -128,7 +136,7 @@ effort, weight and status), to see how views and matrices look with real volume.
 | `SESSION_SECRET` | (required) | 32+ characters. Encrypts the session cookie. Changing it signs everyone out. |
 | `SESSION_MAX_AGE_DAYS` | **`1`** | How long a sign-in lasts. Short because every session holds an `api` token. |
 | `GITLAB_TOKEN`, `KIOSK_KEY` | | Kiosk screen: a **`read_api`-only** service token, and the 24+ character link key. |
-| `KIOSK_VIEWS` | `standup` | Comma-separated config view ids and prioritization tool ids the kiosk shows, first one first (e.g. `standup,epics`). |
+| `KIOSK_VIEWS` | `priority-effort` | Comma-separated config view ids and prioritization tool ids the kiosk shows, first one first (e.g. `priority-effort,epics`). The old `standup` id still works and opens `priority-effort`. |
 | `KIOSK_ROTATE_SECONDS` | `0` | Kiosk: switch to the next of `KIOSK_VIEWS` every N seconds. 0 = stay. |
 | `CLOSED_DAYS_MAX` | `30` | Closed items older than this aren't fetched. Caps the "Completed issues" option. |
 | `ITEMS_MAX` | `5000` | Most open items fetched (and, separately, most recently closed ones), newest-updated first. Past it the board shows a warning. Loading takes about 3 s per 100 items on first load. |
@@ -193,7 +201,7 @@ issues on their own (see `?cycle` above).
 - The kiosk is **always read-only**: write endpoints refuse kiosk sessions, and the board checks (via
   `GET /personal_access_tokens/self`) that `GITLAB_TOKEN` has exactly `read_api`; it refuses to load with
   a broader token.
-- It shows only what `KIOSK_VIEWS` lists (default `standup`): config view ids and prioritization tool ids,
+- It shows only what `KIOSK_VIEWS` lists (default `priority-effort`): config view ids and prioritization tool ids,
   in that order. The first one is the kiosk's home page; it can switch between them from the sidebar and
   rotate through them (`KIOSK_ROTATE_SECONDS`). No personal views, nothing in storage.
 - Unset `KIOSK_KEY` to turn kiosk mode off; existing kiosk cookies stop working immediately.
@@ -251,20 +259,19 @@ is an *instance* of a *tool type*, opened at `/p/<id>`.
 
 | Tool type | Axes | Quadrants |
 |---|---|---|
-| `eisenhower` | `urgency` (x) × `importance` (y) | Do · Schedule · Delegate · Drop, plus the standup walk-through (`←`/`→`) |
-| `valueEffort` | `effort` (x, small on the left) × `value` (y) | Quick wins · Big bets · Fill-ins · Reconsider |
+| `valueEffort` | `effort` (x, small on the left) × `value` (y) | Quick wins · Big bets · Fill-ins · Reconsider, plus the walk-through (`←`/`→`) |
 
 Instances are defined in [`src/lib/prioritization.config.ts`](src/lib/prioritization.config.ts) (config only;
-there are no personal ones). The defaults are **Standup** (Eisenhower: urgency from weight ≥ 3, importance from
-Priority at "High" and above) and **Priority × effort** (value vs effort).
+there are no personal ones). The default is **Priority × effort** (value from Priority, effort from Effort).
+The fields on the instances' value and effort axes are also what the create dialog asks for.
 
 ```ts
 {
-  id: 'standup', name: 'Standup', type: 'eisenhower',
+  id: 'priority-effort', name: 'Priority × effort', type: 'valueEffort',
   filter: and(rule('native:type', 'noneOf', ['Epic'])),
-  urgency:    { field: { field: 'native:weight' }, split: { threshold: 3 } },
-  importance: { field: { name: 'Priority' }, split: { atOption: 'High' } },
-  // optional: title / lowLabel / highLabel / invert / rankDirection per axis, quadrants: { highHigh: { name, hint } … }
+  value:  { field: { name: 'Priority' }, split: 'half', title: 'Priority' },
+  effort: { field: { name: 'Effort' }, split: 'half' },
+  // optional: title / lowLabel / highLabel / invert / rankDirection per axis, quadrants: { lowHigh: { name, hint } … }
 }
 ```
 

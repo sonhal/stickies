@@ -1,10 +1,10 @@
 /**
  * Prioritization tools: named, configured ways of looking at the issues through a prioritization
- * framework (Eisenhower matrix today; MoSCoW, RICE, WSJF … later).
+ * framework (priority × effort today; MoSCoW, RICE, WSJF … later).
  *
  * A *tool type* (tools.ts) defines a framework: its name, its config shape and how it is drawn.
  * A *tool instance* (src/lib/prioritization.config.ts) is one configured use of a type, e.g.
- * "Standup" = Eisenhower with urgency from weight and importance from Priority.
+ * "Priority × effort" = value vs effort with value from Priority and effort from Effort.
  *
  * Instances share the views' building blocks (filters, team/epic scope, field references) but are
  * not views: they have their own sidebar section and URL (/p/<id>), and are defined in config only.
@@ -25,15 +25,6 @@ interface InstanceBase {
 	rankDirection?: RankDirection;
 }
 
-/** Eisenhower matrix: urgent × important → Do / Schedule / Delegate / Drop. */
-export interface EisenhowerInstance extends InstanceBase {
-	type: 'eisenhower';
-	urgency: AxisConfig;
-	importance: AxisConfig;
-	/** Rename quadrants (defaults: Do, Schedule, Delegate, Drop) */
-	quadrants?: Quadrants;
-}
-
 /** Value vs effort: high value × low effort first → Quick wins / Big bets / Fill-ins / Reconsider. */
 export interface ValueEffortInstance extends InstanceBase {
 	type: 'valueEffort';
@@ -42,5 +33,5 @@ export interface ValueEffortInstance extends InstanceBase {
 	quadrants?: Quadrants;
 }
 
-export type ToolInstance = EisenhowerInstance | ValueEffortInstance;
+export type ToolInstance = ValueEffortInstance;
 export type ToolTypeId = ToolInstance['type'];

@@ -9,7 +9,7 @@
  * the rule shows as "field removed" and is ignored.
  *
  * Option values are never needed: filters can use option labels as a fallback ("High").
- * Views are lists or kanban boards. 2×2 matrices (Eisenhower, value vs effort) are prioritization
+ * Views are lists or kanban boards. 2×2 matrices (priority × effort) are prioritization
  * tools, configured in src/lib/prioritization.config.ts.
  *
  * Native field keys: native:status, native:assignees, native:labels, native:weight, native:dueDate,

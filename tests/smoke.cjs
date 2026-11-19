@@ -32,9 +32,9 @@ step('sign in through OAuth', async (p) => {
 	await p.waitForSelector('nav[aria-label="Board navigation"]');
 });
 
-step('matrix (standup) renders quadrants and the walk-through', async (p) => {
-	await open(p, '/p/standup');
-	await p.waitForSelector('[aria-label="Eisenhower matrix"]');
+step('matrix (priority × effort) renders quadrants and the walk-through', async (p) => {
+	await open(p, '/p/priority-effort');
+	await p.waitForSelector('[aria-label="Value vs effort matrix"]');
 	if ((await p.locator('.note').count()) < 5) throw new Error('too few notes');
 	await p.keyboard.press('ArrowRight');
 	await p.waitForSelector('.note.selected');
@@ -143,16 +143,55 @@ step('edit the description in the side panel: full Markdown loads, Ctrl+Enter sa
 	await p.waitForSelector('aside.detail :text("Edited by the smoke test.")');
 });
 
-step('create issue (c) prefilled and opened', async (p) => {
+step('comments: the panel lists them, a new comment and a reply are saved', async (p) => {
+	await p.waitForSelector('aside.detail section[aria-label="Comments"]');
+	await p.waitForSelector('aside.detail section[aria-label="Comments"] :text-matches("No comments yet|Reply")');
+	const before = await writes();
+	const box = p.locator('aside.detail textarea[aria-label="New comment"]');
+	await box.fill('/close\nCommented by the smoke test.');
+	await p.keyboard.press('Control+Enter');
+	await p.waitForSelector('aside.detail .comment :text("Commented by the smoke test.")');
+	if ((await writes()) !== before + 1) throw new Error('comment did not reach GitLab');
+	// Sent to GitLab as "\/close" (neutralized, so GitLab shows it instead of running it); shown here as "/close"
+	await p.locator('aside.detail .comment .body', { hasText: /^\/close\s+Commented by the smoke test\.$/ }).waitFor();
+	if ((await box.inputValue()) !== '') throw new Error('comment box not cleared after saving');
+	const thread = p.locator('aside.detail .thread', { hasText: 'Commented by the smoke test.' });
+	await thread.locator('button', { hasText: 'Reply' }).click();
+	await thread.locator('textarea[aria-label="Reply"]').fill('Replied by the smoke test.');
+	await thread.locator('button.primary', { hasText: 'Reply' }).click();
+	await thread.locator('.replies :text("Replied by the smoke test.")').waitFor();
+	if ((await writes()) !== before + 2) throw new Error('reply did not reach GitLab');
+	// Esc in the comment box leaves the box, not the panel
+	await box.focus();
+	await p.keyboard.press('Escape');
+	await p.waitForSelector('aside.detail article');
+});
+
+step('create issue (c) prefilled and opened, with Priority and Effort set in the dialog', async (p) => {
 	const before = await writes();
 	await p.keyboard.press('Escape');
 	await p.locator('main').click({ position: { x: 5, y: 5 } });
 	await p.keyboard.press('c');
 	await p.waitForSelector('dialog.create input.title');
 	await p.fill('dialog.create input.title', 'Created by the smoke test');
+	const pick = async (name) => {
+		const sel = p.locator(`dialog.create label:has-text("${name}") select`);
+		await sel.waitFor();
+		const label = (await sel.locator('option').nth(1).textContent()).trim();
+		await sel.selectOption({ index: 1 });
+		return label;
+	};
+	const prio = await pick('Priority');
+	const effort = await pick('Effort');
 	await p.click('dialog.create button.primary');
 	await p.waitForSelector('.toast:has-text("Created")');
 	if ((await writes()) !== before + 1) throw new Error('create did not reach GitLab');
+	const panel = p.locator('aside.detail article');
+	await panel.waitFor();
+	for (const [name, label] of [['Priority', prio], ['Effort', effort]]) {
+		const dd = panel.locator('dt', { hasText: name }).locator('xpath=following-sibling::dd[1]');
+		if (!((await dd.textContent()) ?? '').includes(label)) throw new Error(`${name} "${label}" was not set on create`);
+	}
 });
 
 step('delete: Cancel and Esc in the confirmation delete nothing', async (p) => {
@@ -256,10 +295,11 @@ step('a cross-origin write is refused', async (p) => {
 	if (res.status() !== 403) throw new Error(`cross-origin write got ${res.status()}`);
 });
 
-step('Prioritization section: both tools render, Display is hidden, views have no Matrix', async (p) => {
+step('Prioritization section: priority × effort renders (no Eisenhower), Display is hidden, views have no Matrix', async (p) => {
 	await open(p, '/');
 	const nav = p.locator('nav[aria-label="Board navigation"]');
 	await nav.locator('h2', { hasText: 'Prioritization' }).waitFor();
+	if (await nav.locator('a[href="/p/standup"]').count()) throw new Error('the Eisenhower tool is still listed');
 	await nav.locator('a[href="/p/priority-effort"]').click();
 	await p.waitForURL('**/p/priority-effort');
 	await p.waitForSelector('text=Quick wins');
@@ -271,7 +311,7 @@ step('Prioritization section: both tools render, Display is hidden, views have n
 });
 
 step('the sidebar hides completely and comes back (button, tab, [ key, remembered)', async (p) => {
-	await open(p, '/p/standup');
+	await open(p, '/p/priority-effort');
 	const width = () => p.$eval('main.main', (m) => m.getBoundingClientRect().width);
 	const before = await width();
 	await p.click('button[aria-label="Hide sidebar"]');
@@ -421,7 +461,7 @@ step('an old matrix share link opens as a list with a notice', async (p) => {
 	};
 	await open(p, '/v/shared?v=' + LZ.compressToEncodedURIComponent(JSON.stringify(old)));
 	await p.waitForSelector('text=moved to Prioritization');
-	if (await p.locator('[aria-label="Eisenhower matrix"]').count()) throw new Error('old link still drew a matrix');
+	if (await p.locator('[aria-label="Value vs effort matrix"]').count()) throw new Error('old link still drew a matrix');
 });
 
 step('the kiosk shows config views and cannot write', async (p, ctx, browser) => {
@@ -437,8 +477,8 @@ step('the kiosk shows config views and cannot write', async (p, ctx, browser) =>
 	await kp.waitForSelector('button[aria-label="Show sidebar"]');
 	await kp.click('button[aria-label="Show sidebar"]');
 	await kp.waitForSelector('text=Kiosk · read-only');
-	// KIOSK_VIEWS lists "standup" (a prioritization tool) first, so "/" opens it
-	if (process.env.KIOSK_VIEWS?.startsWith('standup')) await kp.waitForSelector('[aria-label="Eisenhower matrix"]');
+	// KIOSK_VIEWS lists "priority-effort" (a prioritization tool) first, so "/" opens it
+	if (process.env.KIOSK_VIEWS?.startsWith('priority-effort')) await kp.waitForSelector('[aria-label="Value vs effort matrix"]');
 	if (await kp.locator('text=New issue').count()) throw new Error('kiosk offers "New issue"');
 	const res = await kp.request.post(BASE + '/api/items/update', {
 		headers: { origin: BASE, 'content-type': 'application/json' },
