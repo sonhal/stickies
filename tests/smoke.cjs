@@ -40,6 +40,25 @@ step('matrix (standup) renders quadrants and the walk-through', async (p) => {
 	await p.waitForSelector('.note.selected');
 });
 
+step('matrix auto-cycle (?cycle) advances, restarts on a pick, pauses on Space', async (p) => {
+	await open(p, '/p/standup?cycle=3');
+	await p.waitForSelector('.note.selected');
+	const sel = () => p.locator('.note.selected').getAttribute('data-item');
+	const first = await sel();
+	await p.waitForTimeout(3400);
+	if ((await sel()) === first) throw new Error('auto-cycle did not advance');
+	await p.waitForTimeout(1500);
+	await p.locator('.note').nth(4).click();
+	const picked = await sel();
+	await p.waitForTimeout(2400);
+	if ((await sel()) !== picked) throw new Error('a manual pick did not restart the countdown');
+	await p.keyboard.press('Space');
+	const held = await sel();
+	await p.waitForTimeout(3600);
+	if ((await sel()) !== held) throw new Error('Space did not pause auto-cycle');
+	await p.keyboard.press('Escape');
+});
+
 step('list view groups and opens the detail panel', async (p) => {
 	await open(p, '/v/my-issues');
 	await p.waitForSelector('.list .row');

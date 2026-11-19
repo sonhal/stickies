@@ -18,6 +18,7 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { deleteText } from '$lib/client/deleteText';
 	import { readSidebarParam, withSidebarParam } from '$lib/client/urlState';
+	import { CYCLE_PARAM, cycleParamValue } from '$lib/client/autoCycle';
 	import type { Command } from '$lib/client/commands';
 	import type { NavDir } from '$lib/client/boardNav';
 	import { appliesTo, closedKind } from '$lib/fields/registry';
@@ -148,7 +149,11 @@
 		if (!kioskPages || kioskPages.length < 2 || secs <= 0) return;
 		const t = setInterval(() => {
 			const i = kioskPages.indexOf(page.url.pathname);
-			goto(kioskPages[(i + 1) % kioskPages.length]); // "/" (i = -1) counts as the first page
+			// ?cycle rides along, so every prioritization board on the screen keeps cycling.
+			// (?sidebar=hidden is put back by its own effect below.)
+			const cycle = cycleParamValue(new URL(location.href).searchParams);
+			const qs = cycle === null ? '' : cycle === '' ? `?${CYCLE_PARAM}` : `?${CYCLE_PARAM}=${cycle}`;
+			goto(kioskPages[(i + 1) % kioskPages.length] + qs); // "/" (i = -1) counts as the first page
 		}, secs * 1000);
 		return () => clearInterval(t);
 	});

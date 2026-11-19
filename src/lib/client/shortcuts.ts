@@ -51,6 +51,7 @@ export const SHORTCUTS: Shortcut[] = [
 
 	{ group: 'Matrix', label: 'Next issue in the walk-through', keys: ['→', 'J'], context: 'matrix' },
 	{ group: 'Matrix', label: 'Previous issue in the walk-through', keys: ['←', 'K'], context: 'matrix' },
+	{ group: 'Matrix', label: 'Pause or resume auto-cycle', note: 'with ?cycle in the URL', keys: ['Space'], context: 'matrix' },
 
 	{ group: 'General', label: 'Command palette', keys: ['Mod+K'], context: 'global' },
 	{ group: 'General', label: 'Keyboard shortcuts', keys: ['?'], context: 'global' },
