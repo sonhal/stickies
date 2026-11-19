@@ -91,6 +91,20 @@ ORIGIN=https://board.example.internal PORT=3000 npm start
 `ORIGIN` must be the public URL people open. It's used to build the OAuth redirect URI and for the
 same-origin checks on sign-out and on every write.
 
+### Docker
+
+The [`Dockerfile`](Dockerfile) builds the app and ships only `build/` and the production dependencies,
+running as the unprivileged `node` user on port 3000. `.git` isn't copied into the image, so pass the
+commit as `BOARD_VERSION`; it's shown at the bottom of the sidebar (otherwise it reads `dev`).
+
+```sh
+docker build --build-arg BOARD_VERSION=$(git rev-parse --short HEAD) -t board .
+docker run -p 3000:3000 --env-file .env -e ORIGIN=https://board.example.internal board
+```
+
+In CI: `--build-arg BOARD_VERSION=$CI_COMMIT_SHORT_SHA` (GitLab) or `--build-arg BOARD_VERSION=${GITHUB_SHA::8}`
+(GitHub Actions). The value is also set as the image's `org.opencontainers.image.revision` label.
+
 ### Try it without GitLab
 
 `scripts/fake-gitlab.mjs` is a tiny fake GitLab (OAuth + the GraphQL operations the board sends, with
@@ -123,6 +137,7 @@ effort, weight and status), to see how views and matrices look with real volume.
 | `WRITE_RATE_PER_MINUTE` | `60` | Writes per signed-in user per minute. |
 | `GITLAB_ITEMS_MODE` | `group` | `group`: one `group.workItems(includeDescendants)` query. `projects`: one query per project, if your GitLab's group query doesn't return project issues (the introspection script tells you). |
 | `GITLAB_LABEL_FILTER` | | Only items that have ALL these labels (comma-separated titles). |
+| `BOARD_VERSION` | git commit | **Build time.** The version shown at the bottom of the sidebar. By default the short commit hash of the checkout being built (`-dirty` if it has uncommitted changes); set it when building without a `.git` directory, e.g. `BOARD_VERSION=$(git rev-parse --short HEAD) npm run build`, or the Docker build arg (see [Docker](#docker)). |
 
 ## Sign-in and token scopes
 
