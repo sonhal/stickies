@@ -4,12 +4,13 @@ import { writeSession } from '$lib/server/auth';
 import { safeEqual } from '$lib/server/session';
 import { SIDEBAR_PARAM, readSidebarParam } from '$lib/client/urlState';
 import { CYCLE_PARAM, cycleParamValue } from '$lib/client/autoCycle';
+import { STATUS_PARAM, statusParamValue } from '$lib/client/statusParam';
 import type { RequestHandler } from './$types';
 
 /**
  * Open /kiosk/<KIOSK_KEY> once on the wall screen. It stores a 30-day kiosk cookie and
- * redirects to the board, so the key doesn't stay in the address bar. `?sidebar=hidden` and
- * `?cycle[=<seconds>]` are passed on (only those: nothing else from the query is forwarded), for a
+ * redirects to the board, so the key doesn't stay in the address bar. `?sidebar=hidden`,
+ * `?cycle[=<seconds>]` and `?status=` are passed on (only those: nothing else from the query is forwarded), for a
  * full-width wall screen whose prioritization boards walk through their issues on their own.
  * The kiosk sees what GITLAB_TOKEN can see, so scope that token to the group only.
  */
@@ -23,6 +24,12 @@ export const GET: RequestHandler = ({ params, cookies, url }) => {
 	if (readSidebarParam(url.searchParams)) next.set(SIDEBAR_PARAM, 'hidden');
 	const cycle = cycleParamValue(url.searchParams);
 	if (cycle !== null) next.set(CYCLE_PARAM, cycle);
-	const qs = next.toString().replace(/=(&|$)/g, '$1'); // a bare `?cycle`, not `?cycle=`
+	const status = statusParamValue(url.searchParams);
+	if (status !== null) next.set(STATUS_PARAM, status);
+	const qs = next
+		.toString()
+		.replace(/=(&|$)/g, '$1') // a bare `?cycle`, not `?cycle=`
+		.replace(/%2C/gi, ',') // and a readable ?status=!toDo,!done
+		.replace(/%21/g, '!');
 	redirect(303, qs ? `/?${qs}` : '/');
 };

@@ -19,6 +19,7 @@
 	import { deleteText } from '$lib/client/deleteText';
 	import { readSidebarParam, withSidebarParam } from '$lib/client/urlState';
 	import { CYCLE_PARAM, cycleParamValue } from '$lib/client/autoCycle';
+	import { STATUS_PARAM, statusParamValue } from '$lib/client/statusParam';
 	import type { Command } from '$lib/client/commands';
 	import type { NavDir } from '$lib/client/boardNav';
 	import { appliesTo, closedKind } from '$lib/fields/registry';
@@ -149,10 +150,16 @@
 		if (!kioskPages || kioskPages.length < 2 || secs <= 0) return;
 		const t = setInterval(() => {
 			const i = kioskPages.indexOf(page.url.pathname);
-			// ?cycle rides along, so every prioritization board on the screen keeps cycling.
-			// (?sidebar=hidden is put back by its own effect below.)
-			const cycle = cycleParamValue(new URL(location.href).searchParams);
-			const qs = cycle === null ? '' : cycle === '' ? `?${CYCLE_PARAM}` : `?${CYCLE_PARAM}=${cycle}`;
+			// ?cycle and ?status ride along, so every prioritization board on the screen keeps cycling
+			// and shows the same statuses. (?sidebar=hidden is put back by its own effect below.)
+			const params = new URL(location.href).searchParams;
+			const cycle = cycleParamValue(params);
+			const status = statusParamValue(params);
+			const parts = [
+				cycle === null ? null : cycle === '' ? CYCLE_PARAM : `${CYCLE_PARAM}=${cycle}`,
+				status === null ? null : `${STATUS_PARAM}=${encodeURIComponent(status).replace(/%2C/gi, ',')}`
+			].filter(Boolean);
+			const qs = parts.length ? `?${parts.join('&')}` : '';
 			goto(kioskPages[(i + 1) % kioskPages.length] + qs); // "/" (i = -1) counts as the first page
 		}, secs * 1000);
 		return () => clearInterval(t);

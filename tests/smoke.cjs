@@ -53,6 +53,38 @@ step('matrix (priority × effort) renders quadrants and the walk-through', async
 	await p.waitForSelector('.note.selected');
 });
 
+step('prioritization: ?status= and the filter bar are the same Status filter', async (p) => {
+	const labels = async () => new Set(await p.locator('.note .status-label').allInnerTexts());
+	const query = () => decodeURIComponent(new URL(p.url()).search);
+	// Default: the config filter hides done and canceled
+	await open(p, '/p/priority-effort');
+	await p.waitForSelector('[aria-label="Value vs effort matrix"]');
+	await p.waitForSelector('text=Status is none of done, canceled');
+	if ((await labels()).has('Done')) throw new Error('done issues shown by default');
+	// Only done
+	await open(p, '/p/priority-effort?status=done');
+	await p.waitForSelector('text=Status is any of done');
+	const done = await labels();
+	if (!done.has('Done') || done.size !== 1) throw new Error(`?status=done shows ${[...done]}`);
+	// Everything but to do and done
+	await open(p, '/p/priority-effort?status=!toDo,!done&cycle=30');
+	await p.waitForSelector('text=Status is none of toDo, done');
+	const rest = await labels();
+	if (rest.has('To do') || rest.has('Done') || rest.size === 0) throw new Error(`?status=!toDo,!done shows ${[...rest]}`);
+	// The filter bar writes the param (keeping ?cycle), and Reset filter removes it
+	await p.click('button[aria-label^="Remove filter: Status"]');
+	await p.waitForURL((u) => u.search.includes('status=all'));
+	if (query() !== '?cycle=30&status=all') throw new Error(`after removing the chip: ${query()}`);
+	await p.click('text=+ Filter');
+	await p.locator('.menu-label, button, [role="option"]').getByText('Status', { exact: true }).first().click();
+	await p.getByText('Any "done" status', { exact: true }).click();
+	await p.click('button:has-text("Apply")');
+	await p.waitForURL((u) => decodeURIComponent(u.search).endsWith('status=done'));
+	await p.click('text=Reset filter');
+	await p.waitForURL((u) => !u.search.includes('status'));
+	if (query() !== '?cycle=30') throw new Error(`after reset: ${query()}`);
+});
+
 step('matrix auto-cycle (?cycle) advances, restarts on a pick, pauses on Space', async (p) => {
 	// The old Eisenhower address redirects to priority × effort and keeps ?cycle
 	await open(p, '/p/standup?cycle=3');
