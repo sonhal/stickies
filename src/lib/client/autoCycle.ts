@@ -27,11 +27,41 @@ export function readCycleParam(params: URLSearchParams): number | null {
 	return Math.min(MAX_CYCLE_SECONDS, Math.max(MIN_CYCLE_SECONDS, Math.round(n)));
 }
 
-/** The `cycle` param as it should be passed on (kiosk redirect and rotation), or null. */
+/** The `cycle` param as it should be passed on (kiosk redirect, page to page), or null when off. */
 export function cycleParamValue(params: URLSearchParams): string | null {
 	const secs = readCycleParam(params);
 	if (secs === null) return null;
 	return params.get(CYCLE_PARAM) === '' ? '' : String(secs);
+}
+
+/** Seconds per issue for a carried `cycle` value (see cycleParamValue), or null when off. */
+export function cycleSecondsOf(value: string | null): number | null {
+	return value === null ? null : readCycleParam(new URLSearchParams({ [CYCLE_PARAM]: value }));
+}
+
+/**
+ * Auto-cycle carries over from page to page, like `?sidebar=hidden`: once a URL turns it on, every
+ * prioritization board you open next cycles too, until a URL says otherwise (`?cycle=off`).
+ * A URL without the param keeps what was there.
+ */
+export function cycleAfterNavigate(carried: string | null, params: URLSearchParams): string | null {
+	return params.has(CYCLE_PARAM) ? cycleParamValue(params) : carried;
+}
+
+/**
+ * The URL with the carried `cycle` value put in (or taken out, when off), so a reload keeps it;
+ * null when the URL already says that. Other parameters are left alone.
+ */
+export function withCycleParam(url: URL, value: string | null): URL | null {
+	const next = new URL(url);
+	if (value === null) {
+		if (!url.searchParams.has(CYCLE_PARAM)) return null;
+		next.searchParams.delete(CYCLE_PARAM);
+	} else {
+		if (url.searchParams.get(CYCLE_PARAM) === value) return null;
+		next.searchParams.set(CYCLE_PARAM, value);
+	}
+	return next;
 }
 
 /**

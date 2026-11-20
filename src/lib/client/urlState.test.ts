@@ -46,5 +46,6 @@ describe('sidebar param', () => {
 	it('is carried into a page-built query string', () => {
 		expect(keepShellParams('q=new', new URLSearchParams('q=old&sidebar=hidden'))).toBe('q=new&sidebar=hidden');
 		expect(keepShellParams('', new URLSearchParams('q=old&issue=1'))).toBe('');
+		expect(keepShellParams('epic=3', new URLSearchParams('sidebar=hidden&cycle=20'))).toBe('epic=3&sidebar=hidden&cycle=20');
 	});
 });

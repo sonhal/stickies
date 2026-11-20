@@ -7,6 +7,8 @@
 	import ViewPage from '$lib/components/ViewPage.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import FieldEditor from '$lib/components/FieldEditor.svelte';
+	import { getTools } from '$lib/client/tools-context';
+	import { keepShellParams } from '$lib/client/urlState';
 
 	// /epics/<numeric id>: the epic's description, progress, and its children through any view
 	// (default: the "team" list; ?view=<id> picks another, e.g. ?view=active for a board).
@@ -16,6 +18,10 @@
 	const epic = $derived(board.byId.get(id) ?? null);
 	const progress = $derived(epic ? epicProgress(epic, board.items, board.reg) : null);
 	let expanded = $state(false);
+
+	// Each prioritization tool, narrowed to this epic (/p/<tool>?epic=<id>)
+	const tools = getTools();
+	const toolHref = (toolId: string) => `/p/${toolId}?${keepShellParams(`epic=${page.params.id}`, page.url.searchParams)}`;
 </script>
 
 {#if epic}
@@ -33,6 +39,14 @@
 			<span>Start <FieldEditor key="native:startDate" item={epic} /></span>
 			<span>Due <FieldEditor key="native:dueDate" item={epic} /></span>
 			{#if !ui.readOnly}<button type="button" class="btn small" onclick={() => (ui.createOpen = { ...ui.createDefaults, parentId: epic.id })}>+ Add issue</button>{/if}
+			{#if tools.all.length}
+				<span class="prioritize">
+					Prioritize
+					{#each tools.all as t (t.id)}
+						<a class="btn ghost small" href={toolHref(t.id)} title="{t.name}, only this epic's issues">{t.name}</a>
+					{/each}
+				</span>
+			{/if}
 		</div>
 		{#if epic.description}
 			<p class="desc" class:expanded>{epic.description}</p>
@@ -94,6 +108,9 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 8px;
+	}
+	.facts > .prioritize {
+		gap: 4px;
 	}
 	.facts :global(.pb) {
 		width: 240px;

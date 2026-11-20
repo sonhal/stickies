@@ -10,13 +10,15 @@ import type { RequestHandler } from './$types';
  *   POST   { itemId, body, discussionId? }   → adds a comment, or a reply to a thread
  *   PATCH  { itemId, noteId, body }          → edits a comment
  *   DELETE { itemId, noteId }                → deletes a comment
+ * Writes: signed-in users, and the kiosk when KIOSK_EDIT is on (as GITLAB_TOKEN's user).
  */
 export const GET: RequestHandler = async ({ locals, url }) => readComments(locals.session, url.searchParams.get('id') ?? '');
 
 const write =
 	(run: typeof executeComment): RequestHandler =>
 	async ({ request, locals, url }) => {
-		const g = await guardWrite(request, locals.session, url.origin, writeLimiter(serverConfig().writeRatePerMinute));
+		const cfg = serverConfig();
+		const g = await guardWrite(request, locals.session, url.origin, writeLimiter(cfg.writeRatePerMinute), cfg.kioskEdit);
 		if (!g.ok) return reply({ ok: false, error: g.error }, g.status);
 		return run(locals.session!, g.body);
 	};

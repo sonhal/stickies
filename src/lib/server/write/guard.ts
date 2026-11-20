@@ -1,6 +1,6 @@
 /**
  * Checks every write request must pass before any validation or GitLab call:
- *  - a signed-in user (the kiosk is always read-only)
+ *  - a signed-in user, or the kiosk when KIOSK_EDIT is on (it writes with GITLAB_TOKEN)
  *  - same origin (CSRF): the Origin header must match the board's own origin. SvelteKit's
  *    built-in check only covers form content types; these endpoints take JSON, so check here too.
  *  - JSON body, size-limited
@@ -31,17 +31,20 @@ export async function guardWrite(
 	request: Request,
 	session: Session | null,
 	expectedOrigin: string,
-	rate: RateLimiter
+	rate: RateLimiter,
+	/** KIOSK_EDIT: let kiosk sessions write too */
+	kioskEdit = false
 ): Promise<GuardResult> {
 	if (!session) return { ok: false, status: 401, error: 'Not signed in' };
-	if (session.kind !== 'user') return { ok: false, status: 403, error: 'The kiosk screen is read-only' };
+	if (session.kind === 'kiosk' && !kioskEdit) return { ok: false, status: 403, error: 'The kiosk screen is read-only' };
 	if (!originAllowed(request.headers.get('origin'), expectedOrigin)) {
 		return { ok: false, status: 403, error: 'Cross-site request refused' };
 	}
 	if (!(request.headers.get('content-type') ?? '').toLowerCase().startsWith('application/json')) {
 		return { ok: false, status: 415, error: 'Send JSON' };
 	}
-	const userKey = `user:${session.user.id}`;
+	// All kiosk screens share one GITLAB_TOKEN, so they share one rate-limit bucket too.
+	const userKey = session.kind === 'user' ? `user:${session.user.id}` : 'kiosk';
 	if (!rate.take(userKey)) {
 		return { ok: false, status: 429, error: 'Too many changes in a short time. Wait a minute and try again.' };
 	}

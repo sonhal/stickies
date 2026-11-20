@@ -5,7 +5,8 @@ import type { RequestHandler } from './$types';
 
 /** POST { title, projectId, type?, parentId?, description?, values? } → creates an item. */
 export const POST: RequestHandler = async ({ request, locals, url }) => {
-	const g = await guardWrite(request, locals.session, url.origin, writeLimiter(serverConfig().writeRatePerMinute));
+	const cfg = serverConfig();
+	const g = await guardWrite(request, locals.session, url.origin, writeLimiter(cfg.writeRatePerMinute), cfg.kioskEdit);
 	if (!g.ok) return reply({ ok: false, error: g.error }, g.status);
 	return executeCreate(locals.session!, g.body);
 };

@@ -5,8 +5,10 @@ import type { ToolInstance } from '$lib/prioritization/types';
 export type Home = { kind: 'view'; id: string } | { kind: 'tool'; id: string } | null;
 
 export interface ToolsContext {
-	/** Prioritization tool instances this viewer can open (the kiosk sees only KIOSK_VIEWS) */
+	/** Prioritization tools listed in the sidebar and palette (on a kiosk, only those in KIOSK_VIEWS) */
 	list: ToolInstance[];
+	/** Every configured tool: a link (e.g. from an epic page) opens any of them, on a kiosk too */
+	all: ToolInstance[];
 	home: Home;
 }
 

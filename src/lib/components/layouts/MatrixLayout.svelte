@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { untrack, type Snippet } from 'svelte';
-	import { page } from '$app/state';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { getBoard } from '$lib/client/board.svelte';
 	import {
@@ -19,7 +18,7 @@
 	import FieldEditor from '$lib/components/FieldEditor.svelte';
 	import { getUi } from '$lib/client/ui.svelte';
 	import type { FieldKey } from '$lib/fields/types';
-	import { pauseAfterSelect, pauseAfterToggle, readCycleParam, type CyclePause } from '$lib/client/autoCycle';
+	import { cycleSecondsOf, pauseAfterSelect, pauseAfterToggle, type CyclePause } from '$lib/client/autoCycle';
 
 	interface Props {
 		view: ViewDefinition;
@@ -107,7 +106,9 @@
 	}
 
 	// ---- Auto-cycle (?cycle=<seconds>, see $lib/client/autoCycle.ts) ----------------------------
-	const cycleSeconds = $derived(readCycleParam(page.url.searchParams));
+	// From the shell, not page.url: it carries over from page to page and is put back in the address
+	// bar shallowly, which page.url doesn't see.
+	const cycleSeconds = $derived(cycleSecondsOf(ui.cycle));
 	let cyclePause = $state<CyclePause>(null);
 	/** Bumped on every pick and tick: restarts the countdown (and its progress bar). */
 	let cycleRun = $state(0);
