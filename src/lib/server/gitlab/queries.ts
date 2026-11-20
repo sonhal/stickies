@@ -356,6 +356,45 @@ query BoardDescription($id: WorkItemID!) {
   }
 }`;
 
+/** How many discussions the comments section loads; more than that links to GitLab. */
+export const COMMENT_THREADS_MAX = 100;
+
+/**
+ * One item's comments (GitLab notes), for the comments section. Only comments: ONLY_COMMENTS leaves
+ * out system notes such as "changed the status"; normalizeComments drops any that slip through.
+ * VERIFY(phase0): WorkItemWidgetNotes.discussions(filter: NotesFilterType), Note.lastEditedAt and
+ * Note.userPermissions.adminNote (may edit and delete) on 18.x.
+ */
+export const COMMENTS_QUERY = /* GraphQL */ `
+query BoardComments($id: WorkItemID!, $first: Int!) {
+  workItem(id: $id) {
+    id
+    widgets {
+      type
+      ... on WorkItemWidgetNotes {
+        discussions(first: $first, filter: ONLY_COMMENTS) {
+          pageInfo { hasNextPage }
+          nodes {
+            id
+            notes {
+              nodes {
+                id
+                body
+                createdAt
+                lastEditedAt
+                system
+                internal
+                author { id username name }
+                userPermissions { adminNote }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`;
+
 // ---- Mutations (the write allowlist) ---------------------------------------------------------
 
 /**
@@ -398,6 +437,56 @@ ${workItemFragment(c)}`;
 export const deleteWorkItemMutation = /* GraphQL */ `
 mutation BoardDeleteWorkItem($input: WorkItemDeleteInput!) {
   workItemDelete(input: $input) {
+    errors
+  }
+}`;
+
+/**
+ * Adds a comment to a work item, or a reply to one of its discussions (discussionId). The body has
+ * had its quick actions neutralized (validate.ts), and the noteable id comes from the viewer's own
+ * board, never from the browser as-is (src/lib/server/write/comments.ts).
+ */
+export const createNoteMutation = /* GraphQL */ `
+mutation BoardCreateNote($input: CreateNoteInput!) {
+  createNote(input: $input) {
+    errors
+    note {
+      id
+      body
+      createdAt
+      lastEditedAt
+      system
+      internal
+      author { id username name }
+      userPermissions { adminNote }
+      discussion { id }
+    }
+  }
+}`;
+
+/** Edits a comment's text. The note id is checked against the item's own comments first (comments.ts). */
+export const updateNoteMutation = /* GraphQL */ `
+mutation BoardUpdateNote($input: UpdateNoteInput!) {
+  updateNote(input: $input) {
+    errors
+    note {
+      id
+      body
+      createdAt
+      lastEditedAt
+      system
+      internal
+      author { id username name }
+      userPermissions { adminNote }
+      discussion { id }
+    }
+  }
+}`;
+
+/** Deletes a comment. The note id is checked against the item's own comments first (comments.ts). */
+export const destroyNoteMutation = /* GraphQL */ `
+mutation BoardDestroyNote($input: DestroyNoteInput!) {
+  destroyNote(input: $input) {
     errors
   }
 }`;

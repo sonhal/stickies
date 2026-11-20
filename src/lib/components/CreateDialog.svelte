@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { getBoard } from '$lib/client/board.svelte';
 	import { getUi, type CreatePrefill } from '$lib/client/ui.svelte';
-	import { appliesTo, childTypesOf, optionById, orderedOptions } from '$lib/fields/registry';
+	import { appliesTo, childTypesOf, optionById, orderedOptions, resolveField } from '$lib/fields/registry';
 	import type { WriteValue } from '$lib/fields/apply';
 	import { prefillToWrite } from '$lib/query/edit';
-	import type { FieldKey } from '$lib/fields/types';
+	import type { FieldDef, FieldKey } from '$lib/fields/types';
+	import { prioritizationFields } from '$lib/prioritization/tools';
+	import { prioritizationTools } from '$lib/prioritization.config';
 
 	/** "Create issue" or "Create epic", pre-filled from the current view's filters and group, like Linear. */
 	let { prefill, onclose }: { prefill: CreatePrefill; onclose: () => void } = $props();
@@ -49,11 +51,25 @@
 	// GitLab's hierarchy decides the possible parents: an epic or issue under an epic, a task under an issue.
 	const parentOptions = $derived(parentField ? board.parentChoices(type, initial.parentId) : []);
 	const canAssign = $derived(!!assigneeField && appliesTo(assigneeField, type));
+	/**
+	 * The fields the board prioritizes by (Priority, Effort: the prioritization tools' axes), asked
+	 * for here so a new issue lands on the matrix without a second trip to its page. A view's
+	 * pre-filled value for one of them becomes the picker's starting value.
+	 */
+	const prioFields = $derived(
+		prioritizationFields(prioritizationTools)
+			.map((r) => resolveField(board.reg, r))
+			.filter(
+				(f, i, all): f is FieldDef =>
+					!!f && f.editable && (f.kind === 'number' || (f.kind === 'singleSelect' && !!f.options?.length)) && all.findIndex((o) => o?.key === f.key) === i
+			)
+	);
+	const shownPrio = $derived(prioFields.filter((f) => appliesTo(f, type)));
 	const statusOptions = $derived(statusField && appliesTo(statusField, type) ? orderedOptions(statusField) : []);
 	const extras = $derived(
 		Object.entries(extra).flatMap(([k, id]) => {
 			const f = board.field(k as FieldKey);
-			if (!f || !id || !f.editable) return [];
+			if (!f || !id || !f.editable || prioFields.some((p) => p.key === f.key)) return [];
 			const label = f.kind === 'people' ? (board.reg.people.find((p) => p.id === id)?.name ?? id) : (optionById(f, id)?.label ?? id);
 			return [{ key: k as FieldKey, name: f.name, label, applies: appliesTo(f, type) }];
 		})
@@ -77,6 +93,10 @@
 			const f = board.field(x.key);
 			const v = f && x.applies ? prefillToWrite(f, extra[x.key]!) : null;
 			if (v !== null) values[x.key] = v;
+		}
+		for (const f of shownPrio) {
+			const v = prefillToWrite(f, String(extra[f.key] ?? '').trim());
+			if (v !== null) values[f.key] = v;
 		}
 		if (statusId && statusOptions.length) values['native:status'] = statusId;
 		if (assignee && canAssign) values['native:assignees'] = [assignee];
@@ -145,6 +165,19 @@
 					</select>
 				</label>
 			{/if}
+			{#each shownPrio as f (f.key)}
+				<label
+					>{f.name}
+					{#if f.kind === 'number'}
+						<input class="input" type="number" min="0" step="1" bind:value={extra[f.key]} placeholder="None" />
+					{:else}
+						<select class="input" bind:value={extra[f.key]}>
+							<option value="">None</option>
+							{#each orderedOptions(f) as o (o.id)}<option value={o.id}>{o.label}</option>{/each}
+						</select>
+					{/if}
+				</label>
+			{/each}
 			<label class="wide"
 				>{isEpic ? 'Parent epic' : 'Parent'}
 				<select class="input" bind:value={parentId}>

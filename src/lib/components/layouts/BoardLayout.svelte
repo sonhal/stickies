@@ -6,7 +6,6 @@
 	import type { FieldDef, WorkItem } from '$lib/fields/types';
 	import { groupItems, type EngineContext, type ItemGroup, type ViewResult } from '$lib/query/engine';
 	import { dropWrite } from '$lib/query/board';
-	import type { ViewDefinition } from '$lib/query/types';
 	import { slotVar } from '$lib/colors';
 	import { boardNext, locate } from '$lib/client/boardNav';
 	import StatusIcon from '../ui/StatusIcon.svelte';
@@ -14,7 +13,6 @@
 	import ValueChip from '../ui/ValueChip.svelte';
 
 	interface Props {
-		view: ViewDefinition;
 		result: ViewResult;
 		properties: FieldDef[];
 		ctx: EngineContext;

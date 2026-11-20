@@ -106,9 +106,9 @@ export interface MatrixConfig {
 	x: AxisConfig;
 	y: AxisConfig;
 	quadrants?: Partial<Record<QuadrantKey, { name: string; hint: string }>>;
-	/** Accessible name of the grid, set by the tool type (e.g. "Eisenhower matrix") */
+	/** Accessible name of the grid, set by the tool type (e.g. "Value vs effort matrix") */
 	label?: string;
-	/** Walk-through order of the quadrants, set by the tool type. Default: Eisenhower (Do first). */
+	/** Walk-through order of the quadrants, set by the tool type. Default: high-high first. */
 	walkOrder?: QuadrantKey[];
 }
 

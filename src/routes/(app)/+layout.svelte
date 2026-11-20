@@ -82,7 +82,6 @@
 	 * Desktop: sidebar hidden completely for more room. Remembered per browser when you toggle it
 	 * yourself. A URL with ?sidebar=hidden (e.g. a kiosk screen) hides it without saving that.
 	 */
-	// svelte-ignore state_referenced_locally
 	ui.cycle = cycleParamValue(page.url.searchParams);
 	let navHidden = $state(false);
 	/**
@@ -360,7 +359,7 @@
 			l: 'native:labels',
 			w: 'native:weight'
 		};
-		if (edits[key]) {
+		if (edits[key] && board.field(edits[key])) {
 			e.preventDefault();
 			ui.edit(edits[key]);
 		}

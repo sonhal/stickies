@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { buildSchema, parse, validate } from 'graphql';
-import { ALL_CAPABILITIES, workItemFragment } from './queries';
+import { ALL_CAPABILITIES, COMMENTS_QUERY, createNoteMutation, destroyNoteMutation, updateNoteMutation, workItemFragment } from './queries';
 
 const SDL = /* GraphQL */ `
 	scalar Time
@@ -21,11 +21,34 @@ const SDL = /* GraphQL */ `
 
 	enum IssuableState { opened closed all locked }
 	enum WorkItemState { OPEN CLOSED }
-	enum WorkItemWidgetType { DESCRIPTION ASSIGNEES LABELS MILESTONE ITERATION WEIGHT START_AND_DUE_DATE HIERARCHY STATUS CUSTOM_FIELDS }
+	enum WorkItemWidgetType { DESCRIPTION ASSIGNEES LABELS MILESTONE ITERATION WEIGHT START_AND_DUE_DATE HIERARCHY STATUS CUSTOM_FIELDS NOTES }
+	enum NotesFilterType { ALL_NOTES ONLY_COMMENTS ONLY_ACTIVITY }
+	scalar WorkItemID
+	scalar NoteableID
+	scalar DiscussionID
+	scalar NoteID
 	enum WorkItemStatusCategoryEnum { TRIAGE TO_DO IN_PROGRESS DONE CANCELED }
 	enum CustomFieldType { SINGLE_SELECT MULTI_SELECT NUMBER TEXT DATE }
 
 	type Query { workItem(id: ID!): WorkItem }
+	type Mutation {
+		createNote(input: CreateNoteInput!): CreateNotePayload
+		updateNote(input: UpdateNoteInput!): UpdateNotePayload
+		destroyNote(input: DestroyNoteInput!): DestroyNotePayload
+	}
+	input UpdateNoteInput { id: NoteID! body: String }
+	type UpdateNotePayload { errors: [String!]! note: Note }
+	input DestroyNoteInput { id: NoteID! }
+	type DestroyNotePayload { errors: [String!]! note: Note }
+	type NotePermissions { adminNote: Boolean! }
+	input CreateNoteInput { noteableId: NoteableID! body: String! discussionId: DiscussionID internal: Boolean }
+	type CreateNotePayload { errors: [String!]! note: Note }
+	type PageInfo { hasNextPage: Boolean! endCursor: String }
+	type Note { id: NoteID! body: String! createdAt: Time! lastEditedAt: Time system: Boolean! internal: Boolean author: UserCore discussion: Discussion userPermissions: NotePermissions! }
+	type NoteConnection { nodes: [Note] }
+	type Discussion { id: DiscussionID! notes: NoteConnection! }
+	type DiscussionConnection { pageInfo: PageInfo! nodes: [Discussion] }
+	type WorkItemWidgetNotes implements WorkItemWidget { type: WorkItemWidgetType discussions(first: Int, filter: NotesFilterType): DiscussionConnection }
 
 	type WorkItemType { id: ID! name: String! }
 	type Namespace { id: ID! fullPath: ID! name: String! }
@@ -105,5 +128,20 @@ describe('work item fragment against a GitLab-shaped schema', () => {
 			.replace('textValue: value', 'value')
 			.replace('dateValue: value', 'value');
 		expect(errorsFor(broken).join('\n')).toMatch(/"value" conflict because they return conflicting types/);
+	});
+});
+
+describe('comments query and mutation against a GitLab-shaped schema', () => {
+	// workItem(id:) is ID! in this subset; GitLab's is WorkItemID!. Swap for validation only.
+	const commentsSchema = buildSchema(SDL.replace('workItem(id: ID!)', 'workItem(id: WorkItemID!)'));
+	it('the comments query is valid', () => {
+		expect(validate(commentsSchema, parse(COMMENTS_QUERY)).map((e) => e.message)).toEqual([]);
+	});
+	it.each([
+		['createNote', createNoteMutation],
+		['updateNote', updateNoteMutation],
+		['destroyNote', destroyNoteMutation]
+	])('the %s mutation is valid', (_name, doc) => {
+		expect(validate(commentsSchema, parse(doc)).map((e) => e.message)).toEqual([]);
 	});
 });

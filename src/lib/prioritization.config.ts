@@ -5,8 +5,10 @@
  *
  * Each entry is an instance of a tool type (src/lib/prioritization/tools.ts):
  *
- *   type: 'eisenhower'   urgency × importance → Do / Schedule / Delegate / Drop
- *   type: 'valueEffort'  value × effort       → Quick wins / Big bets / Fill-ins / Reconsider
+ *   type: 'valueEffort'  value × effort → Quick wins / Big bets / Fill-ins / Reconsider
+ *
+ * The board standardizes on Priority and Effort: the value and effort axes of these instances are
+ * also the fields the "New issue" dialog asks for (see prioritizationFields in tools.ts).
  *
  * Axes take any ordered field, referenced like in views.config.ts: `{ field: 'native:weight' }` or
  * `{ name: 'Priority' }` for a custom field. Split an axis into low/high halves with:
@@ -24,15 +26,6 @@ import { defineTools } from '$lib/prioritization/tools';
 const notEpics = rule('native:type', 'noneOf', ['Epic']);
 
 export const prioritizationTools = defineTools([
-	{
-		id: 'standup',
-		name: 'Standup',
-		type: 'eisenhower',
-		description: 'Urgency from weight, importance from Priority.',
-		filter: and(notEpics),
-		urgency: { field: { field: 'native:weight' }, split: { threshold: 3 } }, // weight 3 and above is urgent
-		importance: { field: { name: 'Priority' }, split: { atOption: 'High' } } // High and above is important
-	},
 	{
 		id: 'priority-effort',
 		name: 'Priority × effort',

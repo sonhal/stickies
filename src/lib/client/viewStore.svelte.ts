@@ -108,6 +108,7 @@ export class ViewStore {
 	get all(): ViewDefinition[] {
 		const list = [...this.config, ...this.personal];
 		if (!this.order.length) return list;
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local lookup table inside a getter
 		const pos = new Map(this.order.map((id, i) => [id, i]));
 		return list
 			.map((v, i) => ({ v, i }))

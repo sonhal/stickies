@@ -183,27 +183,21 @@
 		{#if statusField}
 			<Popover label="Filter by status" triggerClass={s.status.length ? 'btn filter on' : 'btn filter'} width="240px">
 				{#snippet trigger()}{summary('Status', s.status, statusOptions)}{/snippet}
-				{#snippet children()}
-					<OptionPicker options={statusOptions} multi selected={s.status} placeholder="Status…" onpick={(id) => set({ status: toggled(s.status, id) })}>
-						{#snippet icon(o)}<StatusIcon status={optionById(statusField, o.id)} size={12} />{/snippet}
-					</OptionPicker>
-				{/snippet}
+				<OptionPicker options={statusOptions} multi selected={s.status} placeholder="Status…" onpick={(id) => set({ status: toggled(s.status, id) })}>
+					{#snippet icon(o)}<StatusIcon status={optionById(statusField, o.id)} size={12} />{/snippet}
+				</OptionPicker>
 			</Popover>
 		{/if}
 		{#if assigneeField}
 			<Popover label="Filter by assignee" triggerClass={s.assignee.length ? 'btn filter on' : 'btn filter'} width="260px">
 				{#snippet trigger()}{summary('Assignee', s.assignee, assigneeOptions)}{/snippet}
-				{#snippet children()}
-					<OptionPicker options={assigneeOptions} multi selected={s.assignee} placeholder="Assignee…" onpick={(id) => set({ assignee: toggled(s.assignee, id) })} />
-				{/snippet}
+				<OptionPicker options={assigneeOptions} multi selected={s.assignee} placeholder="Assignee…" onpick={(id) => set({ assignee: toggled(s.assignee, id) })} />
 			</Popover>
 		{/if}
 		{#if labelOptions.length}
 			<Popover label="Filter by label" triggerClass={s.label.length ? 'btn filter on' : 'btn filter'} width="260px">
 				{#snippet trigger()}{summary('Label', s.label, labelOptions)}{/snippet}
-				{#snippet children()}
-					<OptionPicker options={labelOptions} multi selected={s.label} placeholder="Label…" onpick={(id) => set({ label: toggled(s.label, id) })} />
-				{/snippet}
+				<OptionPicker options={labelOptions} multi selected={s.label} placeholder="Label…" onpick={(id) => set({ label: toggled(s.label, id) })} />
 			</Popover>
 		{/if}
 		{#if filtered}<button type="button" class="btn ghost filter" onclick={clearFilters}>Clear</button>{/if}

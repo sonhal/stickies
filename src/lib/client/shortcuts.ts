@@ -39,7 +39,6 @@ export const SHORTCUTS: Shortcut[] = [
 	{ group: 'Issue actions', label: 'Change assignees', keys: ['A'], context: 'items', write: true },
 	{ group: 'Issue actions', label: 'Assign to me', keys: ['I'], context: 'items', write: true },
 	{ group: 'Issue actions', label: 'Change labels', keys: ['L'], context: 'list', write: true, note: 'lists only' },
-	{ group: 'Issue actions', label: 'Change weight', keys: ['W'], context: 'items', write: true },
 	{ group: 'Issue actions', label: 'Undo the last change', keys: ['Mod+Z'], context: 'global', write: true },
 	// Always asks first: the key only opens the confirmation, never deletes by itself.
 	{ group: 'Issue actions', label: 'Delete issue…', keys: ['Mod+Backspace', 'Mod+Delete'], context: 'global', write: true },

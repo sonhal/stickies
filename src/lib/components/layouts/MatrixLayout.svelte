@@ -79,7 +79,7 @@
 		return u.missing.map((m) => `No ${(m === 'x' ? x : y).field?.name ?? (m === 'x' ? x : y).title}`).join(', ');
 	};
 
-	// ---- Standup walk-through: Do → Schedule → Delegate → Drop, then triage ------------------
+	// ---- Walk-through: the quadrants in the tool type's walk order, then triage -----------------
 	const walk = $derived(
 		[...walkOrder.flatMap((q) => byQuadrant[q].map((p) => p.item)), ...placement.unplaced.map((u) => u.item)].filter(
 			passesFocus

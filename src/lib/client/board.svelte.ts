@@ -9,6 +9,7 @@ import { EpicColors } from '$lib/colors';
 import { withEpics } from '$lib/fields/epic';
 import { canParent, formatValue, optionById, resolveField, statusOption } from '$lib/fields/registry';
 import type { BoardData, FieldDef, FieldKey, FieldRegistry, OptionDef, WorkItem } from '$lib/fields/types';
+import type { Comment, CommentThread } from '$lib/comments';
 import type { RankContext } from '$lib/query/rank';
 import type { ViewDefinition } from '$lib/query/types';
 import { settings } from '$lib/views.config';
@@ -22,11 +23,14 @@ export class BoardState {
 	/** Items with a write in flight (drawn dimmed) */
 	pending = new SvelteSet<string>();
 	/** In-flight writes per item: `pending` only clears when the last one finishes */
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- private bookkeeping, never read by a template
 	private inflight = new Map<string, number>();
 	/** Latest write started per item+field, with its value (review M3: out-of-order responses) */
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- private bookkeeping, never read by a template
 	private latest = new Map<string, { seq: number; id: string; key: WriteField; value: WriteValue }>();
 	private seq = 0;
 	/** The item as GitLab last confirmed it (load, refresh or a successful write): rollback target */
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- private bookkeeping, never read by a template
 	private confirmed = new Map<string, WorkItem>();
 	/**
 	 * Field changes made from this tab (saved, or still saving), oldest first, with the value that
@@ -35,7 +39,9 @@ export class BoardState {
 	private undoStack: { id: string; key: WriteField; previous: WriteValue; ref: string }[] = [];
 
 	reg: FieldRegistry = $derived(this.data.registry);
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- rebuilt by $derived, never mutated
 	byId: Map<string, WorkItem> = $derived(new Map(this.items.map((i) => [i.id, i])));
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- rebuilt by $derived, never mutated
 	fieldsByKey: Map<FieldKey, FieldDef> = $derived(new Map(this.reg.fields.map((f) => [f.key, f])));
 	colors: EpicColors = $derived(
 		new EpicColors(this.items, settings.epicColors, (id) => {
@@ -197,6 +203,64 @@ export class BoardState {
 		}
 	}
 
+	/** An item's comments (GitLab notes), oldest thread first. Loaded on demand, never cached. */
+	async loadComments(id: string): Promise<{ ok: true; threads: CommentThread[]; more: boolean } | { ok: false; error: string }> {
+		try {
+			const res = await fetch(`/api/items/comments?id=${encodeURIComponent(id)}`, { headers: { accept: 'application/json' }, cache: 'no-store' });
+			const body = (await res.json().catch(() => null)) as { ok?: boolean; threads?: CommentThread[]; more?: boolean; error?: string } | null;
+			if (!res.ok || !body?.ok || !Array.isArray(body.threads)) return { ok: false, error: body?.error ?? `Couldn't load the comments (HTTP ${res.status})` };
+			return { ok: true, threads: body.threads, more: body.more === true };
+		} catch {
+			return { ok: false, error: "Couldn't reach the board server." };
+		}
+	}
+
+	/**
+	 * Add a comment, or a reply to a thread. Not optimistic: the editor keeps the text until GitLab
+	 * has it, so a failure never loses what was typed.
+	 */
+	async addComment(
+		itemId: string,
+		body: string,
+		discussionId: string | null = null
+	): Promise<{ ok: true; comment: Comment; discussionId: string } | { ok: false; error: string }> {
+		try {
+			const res = await fetch('/api/items/comments', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ itemId, body, discussionId })
+			});
+			const r = (await res.json().catch(() => null)) as { ok?: boolean; comment?: Comment; discussionId?: string; error?: string } | null;
+			if (!res.ok || !r?.ok || !r.comment || typeof r.discussionId !== 'string') return { ok: false, error: r?.error ?? `Couldn't save the comment (HTTP ${res.status})` };
+			return { ok: true, comment: r.comment, discussionId: r.discussionId };
+		} catch {
+			return { ok: false, error: "Couldn't reach the board server." };
+		}
+	}
+
+	/** Edit a comment's text. Not optimistic: the editor keeps the text until GitLab has it. */
+	async editComment(itemId: string, noteId: string, body: string): Promise<{ ok: true; comment: Comment } | { ok: false; error: string }> {
+		const r = await this.commentRequest('PATCH', { itemId, noteId, body });
+		return r.ok && r.comment ? { ok: true, comment: r.comment } : { ok: false, error: r.error ?? "Couldn't save the comment" };
+	}
+
+	/** Delete a comment (the UI asks first). */
+	async deleteComment(itemId: string, noteId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+		const r = await this.commentRequest('DELETE', { itemId, noteId });
+		return r.ok ? { ok: true } : { ok: false, error: r.error ?? "Couldn't delete the comment" };
+	}
+
+	private async commentRequest(method: 'PATCH' | 'DELETE', payload: object): Promise<{ ok: boolean; comment?: Comment; error?: string }> {
+		try {
+			const res = await fetch('/api/items/comments', { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+			const r = (await res.json().catch(() => null)) as { ok?: boolean; comment?: Comment; error?: string } | null;
+			if (!res.ok || !r?.ok) return { ok: false, error: r?.error ?? `GitLab didn't take the change (HTTP ${res.status})` };
+			return { ok: true, comment: r.comment };
+		} catch {
+			return { ok: false, error: "Couldn't reach the board server." };
+		}
+	}
+
 	/**
 	 * Save a description. Not optimistic, unlike field edits: the editor keeps the text until GitLab
 	 * has it, so a failure never loses what was typed. `baseVersion` is the version the editor
@@ -300,6 +364,7 @@ export class BoardState {
 	/** Set by the shell: a deleted item must stop being selected */
 	onremove: (id: string) => void = () => {};
 	/** Deleted from this tab: a refresh that was already on its way must not bring them back */
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- private bookkeeping, never read by a template
 	private removed = new Set<string>();
 
 	private forgetItem(id: string) {
