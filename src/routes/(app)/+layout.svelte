@@ -18,6 +18,7 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { deleteText } from '$lib/client/deleteText';
 	import { readSidebarParam, withSidebarParam } from '$lib/client/urlState';
+	import { CYCLE_PARAM, cycleParamValue } from '$lib/client/autoCycle';
 	import { rotationTarget } from '$lib/client/kioskRotation';
 	import type { Command } from '$lib/client/commands';
 	import type { NavDir } from '$lib/client/boardNav';
@@ -165,7 +166,11 @@
 			const next = rotationTarget({ path: page.url.pathname, pages: kioskPages, now: Date.now(), lastInput, lastMove, rotateMs, busy });
 			if (!next) return;
 			lastMove = Date.now();
-			goto(next);
+			// ?cycle rides along, so every prioritization board on the screen keeps cycling.
+			// (?sidebar=hidden is put back by its own effect below.)
+			const cycle = cycleParamValue(new URL(location.href).searchParams);
+			const qs = cycle === null ? '' : cycle === '' ? `?${CYCLE_PARAM}` : `?${CYCLE_PARAM}=${cycle}`;
+			goto(next + qs);
 		}, 1000);
 		return () => {
 			clearInterval(t);

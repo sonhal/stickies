@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { version } from '$app/environment';
 	import { getBoard } from '$lib/client/board.svelte';
 	import { getUi } from '$lib/client/ui.svelte';
 	import { getViews } from '$lib/client/views-context';
@@ -168,6 +169,7 @@
 		{/if}
 		<button type="button" class="btn ghost small" onclick={() => (ui.shortcutsOpen = true)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
 	</div>
+	<div class="version" title="Running version (git commit)">{version}</div>
 </nav>
 
 <style>
@@ -366,6 +368,14 @@
 		gap: 6px;
 		padding: 10px 6px 0;
 		border-top: 1px solid var(--grid);
+	}
+	.version {
+		padding: 0 8px;
+		font-family: var(--mono);
+		font-size: 10.5px;
+		color: var(--text-muted);
+		opacity: 0.7;
+		user-select: all;
 	}
 	.who {
 		flex: 1;

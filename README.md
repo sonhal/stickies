@@ -36,6 +36,15 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
 - **`?sidebar=hidden`** (optional) opens the board with the sidebar hidden, e.g. for a wall screen:
   `/kiosk/<KIOSK_KEY>?sidebar=hidden`. It isn't saved as anyone's preference, and stays in the URL through
   kiosk rotation and reloads until someone shows the sidebar. Without it, the sidebar is as you left it.
+- **`?cycle`** (optional) on a prioritization board makes it walk through its issues on its own, so a wall
+  screen shows each issue's full title and details in turn: `/p/standup?cycle` (every 15 s) or
+  `/p/standup?cycle=30` (every 30 s; 3–600, `0`/`off` = off). It starts on the first issue and follows the
+  walk-through order (Do → Schedule → Delegate → Drop, then triage; only focused epics), wrapping at the end.
+  Picking an issue yourself (click, `←`/`→`, the panel's arrows) restarts the countdown and the cycle carries on
+  from there. `×`/`Esc` pauses until you pick an issue; the ❚❚ button or `Space` pauses until you press ▶. It
+  also waits while someone is typing in an editor or a picker, dialog or the side panel is open. A thin bar
+  under the arrows shows the time to the next issue. Works with the kiosk: `/kiosk/<KIOSK_KEY>?sidebar=hidden&cycle=20`
+  passes it on, and it stays through kiosk rotation.
 - **Layouts:** List, and Board (columns from any single-select field, status, people, parent or epic;
   optional swimlanes; drag to update).
 - **Prioritization:** named tools in their own sidebar section, each an instance of a *tool type*:
@@ -82,6 +91,20 @@ ORIGIN=https://board.example.internal PORT=3000 npm start
 `ORIGIN` must be the public URL people open. It's used to build the OAuth redirect URI and for the
 same-origin checks on sign-out and on every write.
 
+### Docker
+
+The [`Dockerfile`](Dockerfile) builds the app and ships only `build/` and the production dependencies,
+running as the unprivileged `node` user on port 3000. `.git` isn't copied into the image, so pass the
+commit as `BOARD_VERSION`; it's shown at the bottom of the sidebar (otherwise it reads `dev`).
+
+```sh
+docker build --build-arg BOARD_VERSION=$(git rev-parse --short HEAD) -t board .
+docker run -p 3000:3000 --env-file .env -e ORIGIN=https://board.example.internal board
+```
+
+In CI: `--build-arg BOARD_VERSION=$CI_COMMIT_SHORT_SHA` (GitLab) or `--build-arg BOARD_VERSION=${GITHUB_SHA::8}`
+(GitHub Actions). The value is also set as the image's `org.opencontainers.image.revision` label.
+
 ### Try it without GitLab
 
 `scripts/fake-gitlab.mjs` is a tiny fake GitLab (OAuth + the GraphQL operations the board sends, with
@@ -115,6 +138,7 @@ effort, weight and status), to see how views and matrices look with real volume.
 | `WRITE_RATE_PER_MINUTE` | `60` | Writes per signed-in user per minute. |
 | `GITLAB_ITEMS_MODE` | `group` | `group`: one `group.workItems(includeDescendants)` query. `projects`: one query per project, if your GitLab's group query doesn't return project issues (the introspection script tells you). |
 | `GITLAB_LABEL_FILTER` | | Only items that have ALL these labels (comma-separated titles). |
+| `BOARD_VERSION` | git commit | **Build time.** The version shown at the bottom of the sidebar. By default the short commit hash of the checkout being built (`-dirty` if it has uncommitted changes); set it when building without a `.git` directory, e.g. `BOARD_VERSION=$(git rev-parse --short HEAD) npm run build`, or the Docker build arg (see [Docker](#docker)). |
 
 ## Sign-in and token scopes
 
@@ -164,7 +188,8 @@ every request: if the access token expires within 60 s, refresh it (GitLab rotat
 Set `GITLAB_TOKEN` (a group access token with **`read_api` only**, Reporter role, with an expiry) and
 `KIOSK_KEY` (24+ random characters). Open `https://<your board>/kiosk/<KIOSK_KEY>` once on the screen. It
 stores a 30-day kiosk cookie and redirects to the board. Add `?sidebar=hidden` to that link for a
-full-width screen.
+full-width screen, and `&cycle` (or `&cycle=<seconds>`) to have prioritization boards walk through their
+issues on their own (see `?cycle` above).
 
 - By default the kiosk is **read-only**: write endpoints refuse kiosk sessions, and the board checks (via
   `GET /personal_access_tokens/self`) that `GITLAB_TOKEN` has exactly `read_api`; it refuses to load with
