@@ -35,6 +35,12 @@ export function resolveField(reg: FieldRegistry, ref: FieldRef | null | undefine
 	return null;
 }
 
+/** The registry without the given fields (settings.hiddenFields). Refs that don't resolve are ignored. */
+export function withoutFields(reg: FieldRegistry, hidden: FieldRef[]): FieldRegistry {
+	const keys = new Set(hidden.map((r) => resolveField(reg, r)?.key).filter(Boolean));
+	return keys.size ? { ...reg, fields: reg.fields.filter((f) => !keys.has(f.key)) } : reg;
+}
+
 /** A short text for a ref that did not resolve, e.g. in a "field removed" chip. */
 export function refLabel(ref: FieldRef | null | undefined): string {
 	return ref?.name ?? ref?.field ?? '?';

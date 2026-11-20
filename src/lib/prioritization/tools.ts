@@ -1,16 +1,16 @@
 /**
  * Tool types. Each one turns an instance's config into something a renderer can draw.
  *
- * Both current types are 2×2 grids, so they share the quadrant renderer (MatrixLayout): `toView`
+ * Value vs effort is a 2×2 grid, so it uses the quadrant renderer (MatrixLayout): `toView`
  * builds an internal view with the `matrix` layout. A future type that isn't a grid (e.g. a
  * RICE score ranking) adds its own `renderer` value and component in ToolPage.svelte.
  */
-import type { MatrixConfig, ViewDefinition } from '$lib/query/types';
-import type { EisenhowerInstance, ToolInstance, ToolTypeId, ValueEffortInstance } from './types';
+import type { FieldRef, MatrixConfig, ViewDefinition } from '$lib/query/types';
+import type { ToolInstance, ToolTypeId, ValueEffortInstance } from './types';
 
 export interface ToolType<I extends ToolInstance = ToolInstance> {
 	id: I['type'];
-	/** Shown next to the instance name: "Standup · Eisenhower" */
+	/** Shown next to the instance name: "Priority × effort · Value vs effort" */
 	name: string;
 	description: string;
 	/** Sidebar icon (a character, aria-hidden) */
@@ -18,21 +18,6 @@ export interface ToolType<I extends ToolInstance = ToolInstance> {
 	renderer: 'quadrants';
 	toMatrix(instance: I): MatrixConfig;
 }
-
-const eisenhower: ToolType<EisenhowerInstance> = {
-	id: 'eisenhower',
-	name: 'Eisenhower',
-	description: 'Urgent × important: Do, Schedule, Delegate, Drop.',
-	icon: '▦',
-	renderer: 'quadrants',
-	toMatrix: (i) => ({
-		x: { title: 'Urgency', lowLabel: 'Not urgent', highLabel: 'Urgent', ...i.urgency },
-		y: { title: 'Importance', lowLabel: 'Not important', highLabel: 'Important', ...i.importance },
-		// Do / Schedule / Delegate / Drop are the matrix defaults
-		quadrants: i.quadrants,
-		label: 'Eisenhower matrix'
-	})
-};
 
 const valueEffort: ToolType<ValueEffortInstance> = {
 	id: 'valueEffort',
@@ -58,7 +43,6 @@ const valueEffort: ToolType<ValueEffortInstance> = {
 };
 
 export const TOOL_TYPES: { [K in ToolTypeId]: ToolType<Extract<ToolInstance, { type: K }>> } = {
-	eisenhower,
 	valueEffort
 };
 
@@ -84,6 +68,17 @@ export function toView(instance: ToolInstance): ViewDefinition {
 		matrix: toolType(instance).toMatrix(instance as never),
 		rankDirection: instance.rankDirection
 	};
+}
+
+/**
+ * The fields the board prioritizes by: every instance's value axis (Priority), then its effort axis
+ * (Effort), without repeats. The "New issue" dialog asks for these, so new work can be placed on the
+ * matrix right away. References, not names in code (D2): they resolve against the live registry.
+ */
+export function prioritizationFields(instances: ToolInstance[]): FieldRef[] {
+	const refs = [...instances.map((i) => i.value.field), ...instances.map((i) => i.effort.field)];
+	const key = (r: FieldRef) => `${r.field ?? ''}|${(r.name ?? '').trim().toLowerCase()}`;
+	return refs.filter((r, i) => refs.findIndex((o) => key(o) === key(r)) === i);
 }
 
 export function defineTools(instances: ToolInstance[]): ToolInstance[] {

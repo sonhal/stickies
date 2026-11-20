@@ -21,6 +21,19 @@ async function open(p, path) {
 	await p.waitForSelector('html[data-ready]');
 }
 
+/** The number (for /issue/<n>) of an item the fake GitLab seeded with comments by other people. */
+async function itemWithSeededComments() {
+	const gql = async (op, variables) =>
+		(await fetch(`${FAKE}/api/graphql`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: `query ${op} { x }`, variables }) })).json();
+	const list = await gql('BoardGroupWorkItems', { state: 'opened', first: 100 });
+	for (const n of list.data.group.workItems.nodes) {
+		const c = await gql('BoardComments', { id: n.id, first: 100 });
+		const notes = c.data.workItem.widgets[0].discussions.nodes.flatMap((d) => d.notes.nodes);
+		if (notes.some((x) => x.internal) && notes.some((x) => !x.userPermissions.adminNote)) return n.id.split('/').pop();
+	}
+	throw new Error('the fake GitLab has no seeded comments');
+}
+
 async function writes() {
 	return (await (await fetch(`${FAKE}/__writes`)).json()).writes;
 }
@@ -32,16 +45,18 @@ step('sign in through OAuth', async (p) => {
 	await p.waitForSelector('nav[aria-label="Board navigation"]');
 });
 
-step('matrix (standup) renders quadrants and the walk-through', async (p) => {
-	await open(p, '/p/standup');
-	await p.waitForSelector('[aria-label="Eisenhower matrix"]');
+step('matrix (priority × effort) renders quadrants and the walk-through', async (p) => {
+	await open(p, '/p/priority-effort');
+	await p.waitForSelector('[aria-label="Value vs effort matrix"]');
 	if ((await p.locator('.note').count()) < 5) throw new Error('too few notes');
 	await p.keyboard.press('ArrowRight');
 	await p.waitForSelector('.note.selected');
 });
 
 step('matrix auto-cycle (?cycle) advances, restarts on a pick, pauses on Space', async (p) => {
+	// The old Eisenhower address redirects to priority × effort and keeps ?cycle
 	await open(p, '/p/standup?cycle=3');
+	await p.waitForURL('**/p/priority-effort?cycle=3');
 	await p.waitForSelector('.note.selected');
 	const sel = () => p.locator('.note.selected').getAttribute('data-item');
 	const first = await sel();
@@ -80,19 +95,41 @@ step('inline edit: status via keyboard (s) is saved', async (p) => {
 	if ((await writes()) !== before + 1) throw new Error('no write reached GitLab');
 });
 
-step('inline edit: weight via keyboard (w) is saved as a number', async (p) => {
+step('inline edit: a number field (Story points) is saved as a number', async (p) => {
 	await open(p, '/v/my-issues');
 	await p.locator('.row .hit').first().click();
 	await p.waitForSelector('aside.detail article');
 	const before = await writes();
-	await p.keyboard.press('w');
-	await p.locator('aside.detail input[type="number"]').fill('7');
+	await p.locator('aside.detail dt', { hasText: 'Story points' }).locator('xpath=following-sibling::dd[1]').locator('button').first().click();
+	await p.locator('[role="dialog"][aria-label="Edit Story points"] input[type="number"]').fill('7');
 	await p.keyboard.press('Enter');
 	for (let i = 0; i < 20 && (await writes()) === before; i++) await p.waitForTimeout(150);
 	if ((await writes()) !== before + 1) throw new Error('no write reached GitLab');
 	const ref = (await p.locator('aside.detail .ref').innerText()).trim();
-	const w = await p.evaluate(async (r) => (await (await fetch('/api/board')).json()).board.items.find((i) => i.ref === r)?.values['native:weight'], ref);
-	if (w?.value !== 7) throw new Error(`weight is ${JSON.stringify(w)}`);
+	const v = await p.evaluate(async (r) => {
+		const b = (await (await fetch('/api/board')).json()).board;
+		const key = b.registry.fields.find((f) => f.name === 'Story points').key;
+		return b.items.find((i) => i.ref === r)?.values[key];
+	}, ref);
+	if (v?.value !== 7) throw new Error(`story points are ${JSON.stringify(v)}`);
+});
+
+step('weight is hidden: not in the panel, not on w, and the server refuses it', async (p) => {
+	await p.waitForSelector('aside.detail article');
+	if (await p.locator('aside.detail dt', { hasText: /^Weight$/ }).count()) throw new Error('the panel still shows Weight');
+	const reg = await p.evaluate(async () => (await (await fetch('/api/board')).json()).board.registry.fields.map((f) => f.key));
+	if (reg.includes('native:weight')) throw new Error('weight is still in the registry');
+	const before = await writes();
+	await p.keyboard.press('w');
+	await p.waitForTimeout(200);
+	if (await p.locator('[role="dialog"][aria-label="Edit Weight"]').count()) throw new Error('w still opens a weight editor');
+	const status = await p.evaluate(async () => {
+		const id = (await (await fetch('/api/board')).json()).board.items[0].id;
+		const r = await fetch('/api/items/update', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ itemId: id, field: 'native:weight', value: 3 }) });
+		return r.status;
+	});
+	if (status < 400) throw new Error(`a weight write was accepted (${status})`);
+	if ((await writes()) !== before) throw new Error('a weight write reached GitLab');
 });
 
 step('a write GitLab rejects is rolled back with a toast', async (p) => {
@@ -143,16 +180,113 @@ step('edit the description in the side panel: full Markdown loads, Ctrl+Enter sa
 	await p.waitForSelector('aside.detail :text("Edited by the smoke test.")');
 });
 
-step('create issue (c) prefilled and opened', async (p) => {
+step('comments: the panel lists them, a new comment and a reply are saved', async (p) => {
+	await p.waitForSelector('aside.detail section[aria-label="Comments"]');
+	await p.waitForSelector('aside.detail section[aria-label="Comments"] :text-matches("No comments yet|Reply")');
+	const before = await writes();
+	const box = p.locator('aside.detail textarea[aria-label="New comment"]');
+	await box.fill('/close\nCommented by the smoke test.');
+	await p.keyboard.press('Control+Enter');
+	await p.waitForSelector('aside.detail .comment :text("Commented by the smoke test.")');
+	if ((await writes()) !== before + 1) throw new Error('comment did not reach GitLab');
+	// Sent to GitLab as "\/close" (neutralized, so GitLab shows it instead of running it); shown here as "/close"
+	await p.locator('aside.detail .comment .body', { hasText: /^\s*\/close\s*Commented by the smoke test\.\s*$/ }).waitFor();
+	if ((await box.inputValue()) !== '') throw new Error('comment box not cleared after saving');
+	const thread = p.locator('aside.detail .thread', { hasText: 'Commented by the smoke test.' });
+	await thread.locator('button', { hasText: 'Reply' }).click();
+	await thread.locator('textarea[aria-label="Reply"]').fill('Replied by the smoke test.');
+	await thread.locator('button.primary', { hasText: 'Reply' }).click();
+	await thread.locator('.replies :text("Replied by the smoke test.")').waitFor();
+	if ((await writes()) !== before + 2) throw new Error('reply did not reach GitLab');
+	// Markdown renders; HTML and unsafe links in the text are dropped
+	const xss = '**bold** and `code` [docs](https://example.com) [bad](javascript:alert(1))\n<img src=x onerror="window.__xss=1"><script>window.__xss=2</script><b onclick="window.__xss=3">b</b>';
+	await box.fill(xss);
+	await p.keyboard.press('Control+Enter');
+	const md = p.locator('aside.detail .comment .body', { hasText: 'and' }).last();
+	await md.locator('strong', { hasText: 'bold' }).waitFor();
+	await md.locator('code', { hasText: 'code' }).waitFor();
+	const docs = md.locator('a', { hasText: 'docs' });
+	if (!(await docs.getAttribute('href'))?.startsWith('https://example.com') || (await docs.getAttribute('target')) !== '_blank' || !(await docs.getAttribute('rel'))?.includes('noopener'))
+		throw new Error('a Markdown link is not a safe new-tab link');
+	if ((await md.locator('a', { hasText: 'bad' }).getAttribute('href')) !== null) throw new Error('a javascript: link survived');
+	if (await md.locator('img, script, [onclick], [onerror]').count()) throw new Error('unsafe HTML survived sanitizing');
+	if (await p.evaluate(() => window.__xss)) throw new Error('script ran from a comment');
+	// Edit my own comment
+	const mine = p.locator('aside.detail .comment', { hasText: 'Replied by the smoke test.' });
+	await mine.hover();
+	await mine.locator('button', { hasText: 'Edit' }).click();
+	const editBox = p.locator('aside.detail textarea[aria-label="Edit comment"]');
+	if ((await editBox.inputValue()) !== 'Replied by the smoke test.') throw new Error('the editor did not start from the comment text');
+	await editBox.fill('Replied, then edited, by the smoke test.');
+	await p.keyboard.press('Control+Enter');
+	await p.locator('aside.detail .comment', { hasText: 'Replied, then edited, by the smoke test.' }).locator('.edited').waitFor();
+	if ((await writes()) !== before + 4) throw new Error('edit did not reach GitLab');
+	// Delete it, after the confirmation
+	const edited = p.locator('aside.detail .comment', { hasText: 'Replied, then edited' });
+	await edited.hover();
+	await edited.locator('button', { hasText: 'Delete' }).click();
+	await p.locator('[role="alertdialog"] button', { hasText: 'Delete comment' }).click();
+	await p.waitForSelector('.toast:has-text("Comment deleted")');
+	if (await p.locator('aside.detail .comment', { hasText: 'Replied, then edited' }).count()) throw new Error('deleted comment still shown');
+	if ((await writes()) !== before + 5) throw new Error('delete did not reach GitLab');
+	// Esc in the comment box leaves the box, not the panel
+	await box.focus();
+	await p.keyboard.press('Escape');
+	await p.waitForSelector('aside.detail article');
+});
+
+step("comments by others: no Edit/Delete; internal notes marked; the kiosk reads them without internal notes", async (p, ctx, browser) => {
+	const n = await itemWithSeededComments();
+	await open(p, `/issue/${n}`);
+	const others = p.locator('section[aria-label="Comments"] .comment', { hasText: 'split this into two smaller pieces' });
+	await others.waitFor();
+	await others.hover();
+	if (await others.locator('button', { hasText: 'Edit' }).count()) throw new Error("someone else's comment offers Edit");
+	await p.locator('section[aria-label="Comments"] .comment', { hasText: 'enterprise plan' }).locator('.internal').waitFor();
+	const k = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+	const kp = await k.newPage();
+	await kp.goto(BASE + '/kiosk/' + (process.env.KIOSK_KEY || 'fake-kiosk-key-0123456789abcdef'));
+	await kp.waitForSelector('html[data-ready]');
+	await kp.goto(BASE + `/issue/${n}`);
+	await kp.locator('section[aria-label="Comments"] .comment', { hasText: 'split this into two smaller pieces' }).waitFor();
+	if (await kp.locator('section[aria-label="Comments"] :text("enterprise plan")').count()) throw new Error('the kiosk shows an internal note');
+	if (await kp.locator('section[aria-label="Comments"] textarea, section[aria-label="Comments"] button:has-text("Reply")').count())
+		throw new Error('the kiosk offers to comment');
+	const res = await kp.request.post(BASE + '/api/items/comments', {
+		headers: { origin: BASE, 'content-type': 'application/json' },
+		data: { itemId: `gid://gitlab/WorkItem/${n}`, body: 'from the kiosk' }
+	});
+	if (res.status() !== 403) throw new Error(`kiosk comment got ${res.status()}`);
+	await k.close();
+	await open(p, '/v/my-issues');
+	await p.locator('.row .hit').first().click();
+});
+
+step('create issue (c) prefilled and opened, with Priority and Effort set in the dialog', async (p) => {
 	const before = await writes();
 	await p.keyboard.press('Escape');
 	await p.locator('main').click({ position: { x: 5, y: 5 } });
 	await p.keyboard.press('c');
 	await p.waitForSelector('dialog.create input.title');
 	await p.fill('dialog.create input.title', 'Created by the smoke test');
+	const pick = async (name) => {
+		const sel = p.locator(`dialog.create label:has-text("${name}") select`);
+		await sel.waitFor();
+		const label = (await sel.locator('option').nth(1).textContent()).trim();
+		await sel.selectOption({ index: 1 });
+		return label;
+	};
+	const prio = await pick('Priority');
+	const effort = await pick('Effort');
 	await p.click('dialog.create button.primary');
 	await p.waitForSelector('.toast:has-text("Created")');
 	if ((await writes()) !== before + 1) throw new Error('create did not reach GitLab');
+	const panel = p.locator('aside.detail article');
+	await panel.waitFor();
+	for (const [name, label] of [['Priority', prio], ['Effort', effort]]) {
+		const dd = panel.locator('dt', { hasText: name }).locator('xpath=following-sibling::dd[1]');
+		if (!((await dd.textContent()) ?? '').includes(label)) throw new Error(`${name} "${label}" was not set on create`);
+	}
 });
 
 step('delete: Cancel and Esc in the confirmation delete nothing', async (p) => {
@@ -256,10 +390,11 @@ step('a cross-origin write is refused', async (p) => {
 	if (res.status() !== 403) throw new Error(`cross-origin write got ${res.status()}`);
 });
 
-step('Prioritization section: both tools render, Display is hidden, views have no Matrix', async (p) => {
+step('Prioritization section: priority × effort renders (no Eisenhower), Display is hidden, views have no Matrix', async (p) => {
 	await open(p, '/');
 	const nav = p.locator('nav[aria-label="Board navigation"]');
 	await nav.locator('h2', { hasText: 'Prioritization' }).waitFor();
+	if (await nav.locator('a[href="/p/standup"]').count()) throw new Error('the Eisenhower tool is still listed');
 	await nav.locator('a[href="/p/priority-effort"]').click();
 	await p.waitForURL('**/p/priority-effort');
 	await p.waitForSelector('text=Quick wins');
@@ -271,7 +406,7 @@ step('Prioritization section: both tools render, Display is hidden, views have n
 });
 
 step('the sidebar hides completely and comes back (button, tab, [ key, remembered)', async (p) => {
-	await open(p, '/p/standup');
+	await open(p, '/p/priority-effort');
 	const width = () => p.$eval('main.main', (m) => m.getBoundingClientRect().width);
 	const before = await width();
 	await p.click('button[aria-label="Hide sidebar"]');
@@ -421,7 +556,7 @@ step('an old matrix share link opens as a list with a notice', async (p) => {
 	};
 	await open(p, '/v/shared?v=' + LZ.compressToEncodedURIComponent(JSON.stringify(old)));
 	await p.waitForSelector('text=moved to Prioritization');
-	if (await p.locator('[aria-label="Eisenhower matrix"]').count()) throw new Error('old link still drew a matrix');
+	if (await p.locator('[aria-label="Value vs effort matrix"]').count()) throw new Error('old link still drew a matrix');
 });
 
 step('the kiosk shows config views and cannot write', async (p, ctx, browser) => {
@@ -437,8 +572,8 @@ step('the kiosk shows config views and cannot write', async (p, ctx, browser) =>
 	await kp.waitForSelector('button[aria-label="Show sidebar"]');
 	await kp.click('button[aria-label="Show sidebar"]');
 	await kp.waitForSelector('text=Kiosk · read-only');
-	// KIOSK_VIEWS lists "standup" (a prioritization tool) first, so "/" opens it
-	if (process.env.KIOSK_VIEWS?.startsWith('standup')) await kp.waitForSelector('[aria-label="Eisenhower matrix"]');
+	// KIOSK_VIEWS lists "priority-effort" (a prioritization tool) first, so "/" opens it
+	if (process.env.KIOSK_VIEWS?.startsWith('priority-effort')) await kp.waitForSelector('[aria-label="Value vs effort matrix"]');
 	if (await kp.locator('text=New issue').count()) throw new Error('kiosk offers "New issue"');
 	const res = await kp.request.post(BASE + '/api/items/update', {
 		headers: { origin: BASE, 'content-type': 'application/json' },

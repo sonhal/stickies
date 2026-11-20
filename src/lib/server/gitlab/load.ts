@@ -8,6 +8,8 @@
  * Two people can see different items and fields, so one viewer's data is never served to another.
  */
 import { withEpics } from '$lib/fields/epic';
+import { withoutFields } from '$lib/fields/registry';
+import { settings } from '$lib/views.config';
 import type { BoardData, FieldRegistry, LoadProblem, WorkItem } from '$lib/fields/types';
 import { ConfigError, serverConfig, type ServerConfig } from '../config';
 import { checkServiceToken } from '../oauth';
@@ -136,7 +138,9 @@ async function fetchSchema(cfg: ServerConfig, cred: Credential, c: Capabilities)
 		group[list.name] = { nodes: all.nodes };
 		if (all.capped) capped.push(list.label);
 	}
-	const reg = normalizeSchema(data, { iterations: c.iterations });
+	// Hidden fields (settings.hiddenFields, e.g. weight) are dropped here, so the browser never offers
+	// them and write validation, which checks against this registry, refuses them.
+	const reg = withoutFields(normalizeSchema(data, { iterations: c.iterations }), settings.hiddenFields);
 	if (capped.length) reg.warnings.push(`Only the first ${SCHEMA_LIST_MAX} ${capped.join(', ')} were loaded from GitLab.`);
 	if (errors.length) reg.warnings.push('Some field information could not be loaded from GitLab (see the server log).');
 	if (!c.status) reg.warnings.push('This GitLab has no work item statuses; completed items are taken from the closed state.');

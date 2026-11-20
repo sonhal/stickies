@@ -9,6 +9,7 @@ import { EpicColors } from '$lib/colors';
 import { withEpics } from '$lib/fields/epic';
 import { canParent, formatValue, optionById, resolveField, statusOption } from '$lib/fields/registry';
 import type { BoardData, FieldDef, FieldKey, FieldRegistry, OptionDef, WorkItem } from '$lib/fields/types';
+import type { Comment, CommentThread } from '$lib/comments';
 import type { RankContext } from '$lib/query/rank';
 import type { ViewDefinition } from '$lib/query/types';
 import { settings } from '$lib/views.config';
@@ -197,6 +198,64 @@ export class BoardState {
 				return { ok: false, error: body?.error ?? `Couldn't load the description (HTTP ${res.status})` };
 			}
 			return { ok: true, description: body.description, version: body.version, editable: body.editable !== false };
+		} catch {
+			return { ok: false, error: "Couldn't reach the board server." };
+		}
+	}
+
+	/** An item's comments (GitLab notes), oldest thread first. Loaded on demand, never cached. */
+	async loadComments(id: string): Promise<{ ok: true; threads: CommentThread[]; more: boolean } | { ok: false; error: string }> {
+		try {
+			const res = await fetch(`/api/items/comments?id=${encodeURIComponent(id)}`, { headers: { accept: 'application/json' }, cache: 'no-store' });
+			const body = (await res.json().catch(() => null)) as { ok?: boolean; threads?: CommentThread[]; more?: boolean; error?: string } | null;
+			if (!res.ok || !body?.ok || !Array.isArray(body.threads)) return { ok: false, error: body?.error ?? `Couldn't load the comments (HTTP ${res.status})` };
+			return { ok: true, threads: body.threads, more: body.more === true };
+		} catch {
+			return { ok: false, error: "Couldn't reach the board server." };
+		}
+	}
+
+	/**
+	 * Add a comment, or a reply to a thread. Not optimistic: the editor keeps the text until GitLab
+	 * has it, so a failure never loses what was typed.
+	 */
+	async addComment(
+		itemId: string,
+		body: string,
+		discussionId: string | null = null
+	): Promise<{ ok: true; comment: Comment; discussionId: string } | { ok: false; error: string }> {
+		try {
+			const res = await fetch('/api/items/comments', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ itemId, body, discussionId })
+			});
+			const r = (await res.json().catch(() => null)) as { ok?: boolean; comment?: Comment; discussionId?: string; error?: string } | null;
+			if (!res.ok || !r?.ok || !r.comment || typeof r.discussionId !== 'string') return { ok: false, error: r?.error ?? `Couldn't save the comment (HTTP ${res.status})` };
+			return { ok: true, comment: r.comment, discussionId: r.discussionId };
+		} catch {
+			return { ok: false, error: "Couldn't reach the board server." };
+		}
+	}
+
+	/** Edit a comment's text. Not optimistic: the editor keeps the text until GitLab has it. */
+	async editComment(itemId: string, noteId: string, body: string): Promise<{ ok: true; comment: Comment } | { ok: false; error: string }> {
+		const r = await this.commentRequest('PATCH', { itemId, noteId, body });
+		return r.ok && r.comment ? { ok: true, comment: r.comment } : { ok: false, error: r.error ?? "Couldn't save the comment" };
+	}
+
+	/** Delete a comment (the UI asks first). */
+	async deleteComment(itemId: string, noteId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+		const r = await this.commentRequest('DELETE', { itemId, noteId });
+		return r.ok ? { ok: true } : { ok: false, error: r.error ?? "Couldn't delete the comment" };
+	}
+
+	private async commentRequest(method: 'PATCH' | 'DELETE', payload: object): Promise<{ ok: boolean; comment?: Comment; error?: string }> {
+		try {
+			const res = await fetch('/api/items/comments', { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+			const r = (await res.json().catch(() => null)) as { ok?: boolean; comment?: Comment; error?: string } | null;
+			if (!res.ok || !r?.ok) return { ok: false, error: r?.error ?? `GitLab didn't take the change (HTTP ${res.status})` };
+			return { ok: true, comment: r.comment };
 		} catch {
 			return { ok: false, error: "Couldn't reach the board server." };
 		}

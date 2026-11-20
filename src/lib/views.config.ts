@@ -9,7 +9,7 @@
  * the rule shows as "field removed" and is ignored.
  *
  * Option values are never needed: filters can use option labels as a fallback ("High").
- * Views are lists or kanban boards. 2×2 matrices (Eisenhower, value vs effort) are prioritization
+ * Views are lists or kanban boards. 2×2 matrices (priority × effort) are prioritization
  * tools, configured in src/lib/prioritization.config.ts.
  *
  * Native field keys: native:status, native:assignees, native:labels, native:weight, native:dueDate,
@@ -18,7 +18,7 @@
  *
  * Every view is validated (src/lib/query/schema.ts) by the unit tests, so a broken view fails CI.
  */
-import type { RankDirection } from '$lib/fields/registry';
+import type { FieldRef, RankDirection } from '$lib/fields/registry';
 import type { FieldSetting, ViewDefinition } from '$lib/query/types';
 import { and, defineViews, or, rule } from '$lib/query/define';
 
@@ -39,7 +39,14 @@ export const settings = {
 	epicColors: {} as Record<number, number>,
 
 	// The open board refetches this often. 0 = only on page load / Refresh button.
-	refreshSeconds: 60
+	refreshSeconds: 60,
+
+	/**
+	 * Fields the board leaves out completely: not shown, not filterable, sortable or groupable, not in
+	 * the create dialog, and not writable (the server refuses). GitLab keeps the values. The board
+	 * prioritizes by Priority and Effort, so GitLab's weight is hidden.
+	 */
+	hiddenFields: [{ field: 'native:weight' }] as FieldRef[]
 };
 
 /** Leave out Epics on item views: epics have their own pages. */

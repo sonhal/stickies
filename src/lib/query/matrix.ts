@@ -1,5 +1,5 @@
 /**
- * The Eisenhower matrix as a layout: both axes come from any ordered field (§3.3).
+ * The 2×2 prioritization matrix as a layout: both axes come from any ordered field (§3.3).
  * Pure: no Svelte, no DOM.
  *
  * An item's position on an option axis is the option's normalized position (0…1) in GitLab's
@@ -21,10 +21,10 @@ import type { AxisConfig, MatrixConfig, QuadrantKey } from './types';
 export const QUADRANT_ORDER: QuadrantKey[] = ['highHigh', 'lowHigh', 'highLow', 'lowLow'];
 
 export const DEFAULT_QUADRANTS: Record<QuadrantKey, { name: string; hint: string }> = {
-	highHigh: { name: 'Do', hint: 'Urgent and important' },
-	lowHigh: { name: 'Schedule', hint: 'Important, not urgent' },
-	highLow: { name: 'Delegate', hint: 'Urgent, not important' },
-	lowLow: { name: 'Drop', hint: 'Neither' }
+	highHigh: { name: 'High · High', hint: 'High on both axes' },
+	lowHigh: { name: 'Low · High', hint: 'Low on x, high on y' },
+	highLow: { name: 'High · Low', hint: 'High on x, low on y' },
+	lowLow: { name: 'Low · Low', hint: 'Low on both axes' }
 };
 
 const DAY_MS = 86_400_000;
@@ -214,7 +214,7 @@ export function groupByQuadrant(placed: Placed[]): Record<QuadrantKey, Placed[]>
 
 /**
  * Where each quadrant goes on screen, as rows top→bottom, each row left→right.
- * Default: important on top, urgent on the right (so "Do" is top-right). `invert` flips an axis.
+ * Default: high y on top, high x on the right. `invert` flips an axis.
  */
 export function screenLayout(x: ResolvedAxis, y: ResolvedAxis) {
 	const xs: ('low' | 'high')[] = x.config.invert ? ['high', 'low'] : ['low', 'high'];
@@ -226,7 +226,7 @@ export function screenLayout(x: ResolvedAxis, y: ResolvedAxis) {
 	};
 }
 
-/** Quadrant walk-through order: the tool type's, or Eisenhower's. Always all four, each once. */
+/** Quadrant walk-through order: the tool type's, or high-high first. Always all four, each once. */
 export function walkOrderOf(m: MatrixConfig): QuadrantKey[] {
 	const custom = (m.walkOrder ?? []).filter((k, i, a) => QUADRANT_ORDER.includes(k) && a.indexOf(k) === i);
 	return [...custom, ...QUADRANT_ORDER.filter((k) => !custom.includes(k))];

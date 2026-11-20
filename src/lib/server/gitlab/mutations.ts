@@ -55,7 +55,7 @@ export function mergeWidgets(input: Input, widgets: Input): void {
 }
 
 /** GitLab mutation errors → a short message for the toast. Shown as text, never HTML. */
-const PERMISSION = /permission|not allowed|not authorized|does not exist or you don't have/i;
+export const PERMISSION = /permission|not allowed|not authorized|does not exist or you don't have/i;
 
 export function friendlyMutationError(errors: string[]): string {
 	const all = errors.join(' ');
