@@ -53,7 +53,6 @@ const projects = Object.fromEntries(group.projects.nodes.map((p) => [p.fullPath,
 
 let seed = 7;
 const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
 const NOW = Date.parse(process.env.FAKE_GITLAB_NOW ?? new Date().toISOString());
 const daysAgo = (d) => new Date(NOW - d * 86_400_000).toISOString();
 const dateIn = (d) => new Date(NOW + d * 86_400_000).toISOString().slice(0, 10);

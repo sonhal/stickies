@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
-	import { getBoard } from '$lib/client/board.svelte';
 	import { getUi } from '$lib/client/ui.svelte';
 	import type { ItemGroup } from '$lib/query/engine';
 	import type { FieldDef } from '$lib/fields/types';
@@ -10,7 +9,6 @@
 	import Avatar from '../ui/Avatar.svelte';
 
 	let { groups, properties, oncreate }: { groups: ItemGroup[]; properties: FieldDef[]; oncreate?: (g: ItemGroup) => void } = $props();
-	const board = getBoard();
 	const ui = getUi();
 	const collapsed = new SvelteSet<string>();
 

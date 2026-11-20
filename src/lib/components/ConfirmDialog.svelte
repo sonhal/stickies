@@ -40,7 +40,6 @@
 </script>
 
 <!-- A click on the backdrop lands on the <dialog> itself; clicks inside land on .box. -->
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 <dialog
 	bind:this={dialog}
 	class="confirm"

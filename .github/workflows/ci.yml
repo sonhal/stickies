@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A new push to the same PR cancels the run that is still going for the old commit.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# The workflow only reads the repository; it never needs a write token.
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 22
+  PLAYWRIGHT_VERSION: 1.63.0
+
+jobs:
+  check:
+    name: Type check (svelte-check)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run check -- --fail-on-warnings
+
+  lint:
+    name: Lint (ESLint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # Generates .svelte-kit/tsconfig.json, which the type-aware Svelte parser reads.
+      - run: npx svelte-kit sync
+      - run: npm run lint
+
+  test:
+    name: Unit tests (vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  smoke:
+    name: Build + smoke test (Playwright vs fake GitLab)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      # Playwright isn't a project dependency (tests/smoke.cjs requires it directly),
+      # so install a pinned version without touching package.json / the lockfile.
+      - name: Install Playwright + Chromium
+        run: |
+          npm install --no-save playwright@${{ env.PLAYWRIGHT_VERSION }}
+          npx playwright install --with-deps chromium
+
+      - name: Start fake GitLab and the board
+        run: |
+          . scripts/dev-env.sh
+          nohup node scripts/fake-gitlab.mjs > fake-gitlab.log 2>&1 &
+          ORIGIN=http://localhost:3000 PORT=3000 nohup node build > board.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null http://localhost:4010 && curl -s -o /dev/null http://localhost:3000; then
+              echo "servers are up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "servers did not start"; cat fake-gitlab.log board.log; exit 1
+
+      - name: Run smoke test
+        env:
+          BOARD_URL: http://localhost:3000
+        run: |
+          . scripts/dev-env.sh
+          node tests/smoke.cjs
+
+      - name: Upload failure screenshots and server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-failure
+          path: |
+            smoke-failure-*.png
+            fake-gitlab.log
+            board.log
+          if-no-files-found: ignore
+          retention-days: 7
