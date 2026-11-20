@@ -362,7 +362,8 @@ export const COMMENT_THREADS_MAX = 100;
 /**
  * One item's comments (GitLab notes), for the comments section. Only comments: ONLY_COMMENTS leaves
  * out system notes such as "changed the status"; normalizeComments drops any that slip through.
- * VERIFY(phase0): WorkItemWidgetNotes.discussions(filter: NotesFilterType) on 18.x.
+ * VERIFY(phase0): WorkItemWidgetNotes.discussions(filter: NotesFilterType), Note.lastEditedAt and
+ * Note.userPermissions.adminNote (may edit and delete) on 18.x.
  */
 export const COMMENTS_QUERY = /* GraphQL */ `
 query BoardComments($id: WorkItemID!, $first: Int!) {
@@ -380,9 +381,11 @@ query BoardComments($id: WorkItemID!, $first: Int!) {
                 id
                 body
                 createdAt
+                lastEditedAt
                 system
                 internal
                 author { id username name }
+                userPermissions { adminNote }
               }
             }
           }
@@ -451,10 +454,39 @@ mutation BoardCreateNote($input: CreateNoteInput!) {
       id
       body
       createdAt
+      lastEditedAt
       system
       internal
       author { id username name }
+      userPermissions { adminNote }
       discussion { id }
     }
+  }
+}`;
+
+/** Edits a comment's text. The note id is checked against the item's own comments first (comments.ts). */
+export const updateNoteMutation = /* GraphQL */ `
+mutation BoardUpdateNote($input: UpdateNoteInput!) {
+  updateNote(input: $input) {
+    errors
+    note {
+      id
+      body
+      createdAt
+      lastEditedAt
+      system
+      internal
+      author { id username name }
+      userPermissions { adminNote }
+      discussion { id }
+    }
+  }
+}`;
+
+/** Deletes a comment. The note id is checked against the item's own comments first (comments.ts). */
+export const destroyNoteMutation = /* GraphQL */ `
+mutation BoardDestroyNote($input: DestroyNoteInput!) {
+  destroyNote(input: $input) {
+    errors
   }
 }`;

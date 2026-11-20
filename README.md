@@ -54,18 +54,32 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   ordered field. Instances live in [`src/lib/prioritization.config.ts`](src/lib/prioritization.config.ts);
   see [Prioritization tools](#prioritization-tools).
 - **Editing:** status, any custom field, assignees, parent epic, title, description (full Markdown, in the side
-  panel), weight, start/due date, labels (scoped labels stay exclusive), milestone, iteration, and *create issue* or *create epic* (in the group) pre-filled
+  panel), start/due date, labels (scoped labels stay exclusive), milestone, iteration, and *create issue* or *create epic* (in the group) pre-filled
   from the current view. The create dialog asks for **Priority** and **Effort** (the fields the
   prioritization tools use as value and effort axes), so a new issue lands on the matrix right away.
   Changes show at once and roll back with a message if GitLab refuses them.
   **Delete** an issue or epic from the side panel, the palette or `⌘/Ctrl Backspace`, always after a
   confirmation, and only offered when GitLab says you may (normally project Owners).
+- **Weight is hidden.** The board prioritizes by Priority and Effort, so GitLab's weight isn't shown,
+  filtered, sorted, grouped or edited (the server refuses weight writes); GitLab keeps the values.
+  `settings.hiddenFields` in [`src/lib/views.config.ts`](src/lib/views.config.ts) lists the hidden fields:
+  remove weight there to bring it back, or add others.
 - **Comments:** the issue page and the side panel show an item's GitLab comments under the description
-  (threads oldest first, replies indented, internal notes marked), and you can add a comment or reply
-  (`⌘/Ctrl Enter` sends). Loaded from GitLab with your own token when you open the item; system notes
-  ("changed the status") are left out. Bodies are shown as plain text, never as HTML, and quick actions in
-  a comment (`/close`, `/move` …) are escaped so GitLab shows them instead of running them, as for
-  descriptions. The 100 most recent threads are shown; older ones link to GitLab. Not on the kiosk.
+  (threads oldest first, replies indented, internal notes marked, "(edited)" on edited ones). You can add
+  a comment or reply (`⌘/Ctrl Enter` sends), and **edit** or **delete** the comments GitLab lets you change
+  (your own, or any as a maintainer; delete asks first). Loaded from GitLab with your own token when you
+  open the item; system notes ("changed the status") are left out. The 100 most recent threads are shown;
+  older ones link to GitLab.
+  - **Markdown** is rendered (GitLab Flavored Markdown's common parts: emphasis, code, lists, task lists,
+    tables, quotes, links) with `marked`, then sanitized with DOMPurify against a strict allowlist: no
+    images, media, iframes, forms, styles or event handlers; links only to http(s) and mailto, opening in a
+    new tab. Images become links, and relative links (uploads) point at GitLab. GitLab references
+    (`#12`, `@name`) stay plain text. The CSP (`script-src 'self'`) is a further layer.
+  - Quick actions in a comment or an edit (`/close`, `/move` …) are escaped so GitLab shows them instead of
+    running them, as for descriptions.
+  - Every change is checked against the item: a reply only goes into that item's threads, and an edit or
+    delete only touches a note the server just read from that item's comments.
+  - The **kiosk** shows comments read-only, and never internal notes (a wall screen is for the room).
 - **Teams = projects, epics with progress:** the sidebar lists projects with open work and open epics;
   `/epics` lists epics with progress from GitLab's rolled-up counts, with search, filters (status, assignee,
   label), sortable columns and grouping (status, assignee, parent epic), kept in the URL; `/epics/<id>` shows an epic's issues
@@ -76,7 +90,7 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   "field removed" chip and is ignored.
 - **Keyboard:** press `?` for the full list. `⌘/Ctrl K` command palette · `j`/`k` or `↑`/`↓` move · `Enter`/`o` open ·
   `Esc` close · `/` search · `f` add a filter · `c` create · `s` status · `a` assignees · `i` assign to me · `l` labels ·
-  `w` weight · `⌘/Ctrl Z` undo the last change · `⌘/Ctrl Backspace` delete (asks first) · `g` then `1`–`9`/`e`/`h` go to a view, epics, home · `[` hide/show the sidebar ·
+  `⌘/Ctrl Z` undo the last change · `⌘/Ctrl Backspace` delete (asks first) · `g` then `1`–`9`/`e`/`h` go to a view, epics, home · `[` hide/show the sidebar ·
   on a board, `h`/`j`/`k`/`l` or arrows move between cards and columns, `Alt`+`←`/`→` (or `Shift`+`h`/`l`) moves the selected
   card · in a 2×2 matrix, `←`/`→` (or `j`/`k`) walk the board. The list lives in
   [`src/lib/client/shortcuts.ts`](src/lib/client/shortcuts.ts).

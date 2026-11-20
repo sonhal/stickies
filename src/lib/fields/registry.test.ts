@@ -9,8 +9,10 @@ import {
 	normalizedPosition,
 	optionRank,
 	resolveField,
-	resolveOption
+	resolveOption,
+	withoutFields
 } from './registry';
+import { settings } from '$lib/views.config';
 
 const prio = selectField('custom:7', 'Priority', ['Critical', 'High', 'Medium', 'Low']);
 
@@ -117,5 +119,20 @@ describe('work item hierarchy', () => {
 		expect(childTypesOf(reg, 'Epic')).toEqual(['Epic', 'Issue']); // spelled as the group spells them; Objective isn't in the group
 		expect(childTypesOf(reg, 'Issue')).toEqual(['Task']);
 		expect(childTypesOf(reg, 'Unknown type')).toEqual([]);
+	});
+});
+
+describe('hidden fields', () => {
+	it('withoutFields drops the referenced fields and ignores refs that do not resolve', () => {
+		const reg = registry([prio]);
+		const out = withoutFields(reg, [{ field: 'native:weight' }, { name: 'Gone' }]);
+		expect(out.fields.map((f) => f.key)).not.toContain('native:weight');
+		expect(out.fields).toHaveLength(reg.fields.length - 1);
+		expect(withoutFields(reg, [])).toBe(reg);
+	});
+
+	it('the board hides weight (it prioritizes by Priority and Effort)', () => {
+		const reg = withoutFields(registry([prio]), settings.hiddenFields);
+		expect(resolveField(reg, { field: 'native:weight' })).toBeNull();
 	});
 });

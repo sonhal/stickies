@@ -342,7 +342,7 @@
 			l: 'native:labels',
 			w: 'native:weight'
 		};
-		if (edits[key]) {
+		if (edits[key] && board.field(edits[key])) {
 			e.preventDefault();
 			ui.edit(edits[key]);
 		}

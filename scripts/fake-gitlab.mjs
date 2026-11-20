@@ -345,7 +345,18 @@ function addNote(itemId, body, authorId, discussionId = null, at = new Date().to
 		list.push(d);
 		discussions.set(itemId, list);
 	}
-	const note = { id: `gid://gitlab/Note/${nextNote++}`, body, createdAt: at, system: false, internal: false, author: users[authorId] ?? null, discussion: { id: d.id } };
+	const note = {
+		id: `gid://gitlab/Note/${nextNote++}`,
+		body,
+		createdAt: at,
+		lastEditedAt: null,
+		system: false,
+		internal: false,
+		author: users[authorId] ?? null,
+		// The signed-in demo user (alex) may edit and delete their own notes
+		userPermissions: { adminNote: authorId === 'gid://gitlab/User/101' },
+		discussion: { id: d.id }
+	};
 	d.notes.push(note);
 	return note;
 }
@@ -356,7 +367,17 @@ function addNote(itemId, body, authorId, discussionId = null, at = new Date().to
 	for (const [n, r] of open.entries()) {
 		const first = addNote(r.id, 'Can we split this into two smaller pieces?', ids[(n + 1) % ids.length], null, daysAgo(2));
 		addNote(r.id, 'Yes, I will open a follow-up for the second half.', ids[n % ids.length], first.discussion.id, daysAgo(1));
+		const secret = addNote(r.id, 'Internal: the customer is on the enterprise plan.', ids[(n + 2) % ids.length], null, daysAgo(1));
+		secret.internal = true;
 	}
+}
+const findNote = (id) => {
+	for (const list of discussions.values())
+		for (const d of list) {
+			const i = d.notes.findIndex((x) => x.id === id);
+			if (i !== -1) return { d, i, list };
+		}
+	return null;
 }
 
 // ---- HTTP ---------------------------------------------------------------------------------------
@@ -429,6 +450,23 @@ const server = createServer(async (req, res) => {
 					const { noteableId, body: text, discussionId } = v.input ?? {};
 					const note = items.has(noteableId) ? addNote(noteableId, text, 'gid://gitlab/User/101', discussionId ?? null) : null;
 					return json(res, 200, { data: { createNote: note ? { errors: [], note } : { errors: ['Note could not be created'], note: null } } });
+				}
+				case 'BoardUpdateNote': {
+					writes++;
+					const f = findNote(v.input?.id);
+					if (!f || !f.d.notes[f.i].userPermissions.adminNote)
+						return json(res, 200, { data: { updateNote: null }, errors: [{ message: "The resource that you are attempting to access does not exist or you don't have permission to perform this action" }] });
+					Object.assign(f.d.notes[f.i], { body: v.input.body, lastEditedAt: new Date().toISOString() });
+					return json(res, 200, { data: { updateNote: { errors: [], note: f.d.notes[f.i] } } });
+				}
+				case 'BoardDestroyNote': {
+					writes++;
+					const f = findNote(v.input?.id);
+					if (!f || !f.d.notes[f.i].userPermissions.adminNote)
+						return json(res, 200, { data: { destroyNote: null }, errors: [{ message: "The resource that you are attempting to access does not exist or you don't have permission to perform this action" }] });
+					f.d.notes.splice(f.i, 1);
+					if (!f.d.notes.length) f.list.splice(f.list.indexOf(f.d), 1);
+					return json(res, 200, { data: { destroyNote: { errors: [] } } });
 				}
 				case 'BoardUpdateWorkItem':
 					writes++;

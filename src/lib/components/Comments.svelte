@@ -1,15 +1,18 @@
 <script lang="ts">
 	import { getBoard } from '$lib/client/board.svelte';
 	import { getUi } from '$lib/client/ui.svelte';
+	import { renderMarkdown } from '$lib/client/markdown';
 	import { COMMENT_MAX, type Comment, type CommentThread } from '$lib/comments';
 	import type { WorkItem } from '$lib/fields/types';
 	import Avatar from './ui/Avatar.svelte';
+	import ConfirmDialog from './ConfirmDialog.svelte';
 
 	/**
 	 * An issue's or epic's comments (GitLab notes), under the description: threads oldest first,
-	 * replies indented, and a box to add a comment or reply. Loaded when shown, from GitLab with the
-	 * viewer's own token. Bodies are GitLab Markdown shown as plain text, never as HTML.
-	 * Not shown on the read-only kiosk.
+	 * replies indented, and a box to add a comment or reply. Comments GitLab lets the viewer change
+	 * (their own, or as a maintainer) can be edited and deleted. Loaded when shown, from GitLab with
+	 * the viewer's own token. Bodies are GitLab Markdown, rendered through a sanitizer
+	 * (src/lib/client/markdown.ts). The kiosk only reads, and never sees internal notes.
 	 */
 	let { item }: { item: WorkItem } = $props();
 	const board = getBoard();
@@ -18,11 +21,19 @@
 	type Load = { kind: 'loading' } | { kind: 'error'; error: string } | { kind: 'ready'; threads: CommentThread[]; more: boolean };
 	let st = $state<Load>({ kind: 'loading' });
 	let text = $state('');
-	let saving = $state(false);
+	/** What is being saved: the new comment box, a reply, or a comment's edit */
+	let saving = $state<'new' | 'reply' | 'edit' | null>(null);
 	/** The thread a reply is being written to, and its text */
 	let replyTo = $state<string | null>(null);
 	let replyText = $state('');
 	let replyArea: HTMLTextAreaElement | undefined = $state();
+	/** The comment being edited, and its text */
+	let editing = $state<string | null>(null);
+	let editText = $state('');
+	let editArea: HTMLTextAreaElement | undefined = $state();
+	/** The comment waiting for "Delete?" to be confirmed */
+	let deleting = $state<Comment | null>(null);
+	let deleteBusy = $state(false);
 
 	const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 	const count = $derived(st.kind === 'ready' ? st.threads.reduce((n, t) => n + t.comments.length, 0) : 0);
@@ -49,9 +60,9 @@
 	async function submit() {
 		const body = text.trim();
 		if (!body || saving) return;
-		saving = true;
+		saving = 'new';
 		const r = await board.addComment(item.id, body);
-		saving = false;
+		saving = null;
 		if (!r.ok) return ui.toast(r.error, 'error');
 		text = '';
 		added(r.comment, r.discussionId);
@@ -60,9 +71,9 @@
 	async function submitReply(threadId: string) {
 		const body = replyText.trim();
 		if (!body || saving) return;
-		saving = true;
+		saving = 'reply';
 		const r = await board.addComment(item.id, body, threadId);
-		saving = false;
+		saving = null;
 		if (!r.ok) return ui.toast(r.error, 'error');
 		replyText = '';
 		replyTo = null;
@@ -75,8 +86,53 @@
 		queueMicrotask(() => replyArea?.focus());
 	}
 
-	/** ⌘/Ctrl+Enter sends; Esc leaves the box (and closes an empty reply) without closing the panel. */
-	function keys(e: KeyboardEvent, send: () => void, reply = false) {
+	/** The text as the editor shows it: the board's own "\/" escapes (quick actions) come back as "/" */
+	const editable = (body: string) => body.replace(/^( {0,3})\\\//gm, '$1/');
+
+	function startEdit(c: Comment) {
+		editing = c.id;
+		editText = editable(c.body);
+		queueMicrotask(() => editArea?.focus());
+	}
+
+	async function saveEdit(c: Comment) {
+		const body = editText.trim();
+		if (!body || saving) return;
+		if (body === editable(c.body).trim()) {
+			editing = null;
+			return;
+		}
+		saving = 'edit';
+		const r = await board.editComment(item.id, c.id, body);
+		saving = null;
+		if (!r.ok) return ui.toast(r.error, 'error');
+		if (st.kind === 'ready') {
+			for (const t of st.threads) {
+				const i = t.comments.findIndex((x) => x.id === c.id);
+				if (i !== -1) t.comments[i] = r.comment;
+			}
+		}
+		editing = null;
+		ui.toast('Comment saved');
+	}
+
+	async function confirmDelete() {
+		const c = deleting;
+		if (!c || deleteBusy) return;
+		deleteBusy = true;
+		const r = await board.deleteComment(item.id, c.id);
+		deleteBusy = false;
+		deleting = null;
+		if (!r.ok) return ui.toast(r.error, 'error');
+		if (st.kind === 'ready') {
+			for (const t of st.threads) t.comments = t.comments.filter((x) => x.id !== c.id);
+			st.threads = st.threads.filter((t) => t.comments.length);
+		}
+		ui.toast('Comment deleted');
+	}
+
+	/** ⌘/Ctrl+Enter sends; Esc leaves the box (and closes an empty reply or an edit) without closing the panel. */
+	function keys(e: KeyboardEvent, send: () => void, onEscape?: () => void) {
 		if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
 			e.preventDefault();
 			send();
@@ -84,26 +140,20 @@
 			e.stopPropagation();
 			e.preventDefault();
 			(e.currentTarget as HTMLElement).blur();
-			if (reply && !replyText.trim()) replyTo = null;
+			onEscape?.();
 		}
 	}
 
-	/**
-	 * The board escapes quick actions it sends (`\/close`, see neutralizeQuickActions); GitLab's own
-	 * Markdown shows them as `/close`, so show them that way here too.
-	 */
-	const shown = (body: string) => body.replace(/^( {0,3})\\\//gm, '$1/');
-
 	function when(iso: string): string {
 		if (!iso) return '';
-		const d = new Date(iso);
-		const mins = Math.round((Date.now() - d.getTime()) / 60_000);
+		const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
 		if (mins < 1) return 'just now';
 		if (mins < 60) return `${mins} min ago`;
 		if (mins < 60 * 24) return `${Math.round(mins / 60)} h ago`;
 		if (mins < 60 * 24 * 7) return `${Math.round(mins / 1440)} d ago`;
 		return iso.slice(0, 10);
 	}
+	const utc = (iso: string) => iso.slice(0, 16).replace('T', ' ') + ' UTC';
 </script>
 
 {#snippet one(c: Comment)}
@@ -112,10 +162,37 @@
 		<div class="content">
 			<div class="meta">
 				<strong>{c.author?.name ?? 'Unknown'}</strong>
-				<time datetime={c.createdAt} title={c.createdAt.slice(0, 16).replace('T', ' ') + ' UTC'}>{when(c.createdAt)}</time>
+				<time datetime={c.createdAt} title={utc(c.createdAt)}>{when(c.createdAt)}</time>
+				{#if c.editedAt}<span class="edited" title="Edited {utc(c.editedAt)}">(edited)</span>{/if}
 				{#if c.internal}<span class="internal" title="Internal note: only project members with Reporter access or more see it">Internal</span>{/if}
+				{#if !ui.readOnly && c.canEdit && editing !== c.id}
+					<span class="tools">
+						<button type="button" class="btn ghost small" onclick={() => startEdit(c)} aria-label="Edit comment">Edit</button>
+						<button type="button" class="btn ghost small danger" onclick={() => (deleting = c)} aria-label="Delete comment">Delete</button>
+					</span>
+				{/if}
 			</div>
-			<div class="body">{shown(c.body)}</div>
+			{#if editing === c.id}
+				<div class="compose">
+					<textarea
+						bind:this={editArea}
+						bind:value={editText}
+						rows={Math.min(16, Math.max(3, editText.split('\n').length + 1))}
+						maxlength={COMMENT_MAX}
+						aria-label="Edit comment"
+						onkeydown={(e) => keys(e, () => saveEdit(c), () => (editing = null))}
+					></textarea>
+					<div class="bar">
+						<button type="button" class="btn small" onclick={() => (editing = null)} disabled={saving === 'edit'}>Cancel</button>
+						<button type="button" class="btn small primary" onclick={() => saveEdit(c)} disabled={!!saving || !editText.trim()}>
+							{saving === 'edit' ? 'Saving…' : 'Save'}
+						</button>
+					</div>
+				</div>
+			{:else}
+				<!-- Sanitized by renderMarkdown (allowlisted tags, safe links only); never raw GitLab text -->
+				<div class="body md">{@html renderMarkdown(c.body, item.url)}</div>
+			{/if}
 		</div>
 	</div>
 {/snippet}
@@ -146,12 +223,12 @@
 								maxlength={COMMENT_MAX}
 								placeholder="Reply…"
 								aria-label="Reply"
-								onkeydown={(e) => keys(e, () => submitReply(t.id), true)}
+								onkeydown={(e) => keys(e, () => submitReply(t.id), () => !replyText.trim() && (replyTo = null))}
 							></textarea>
 							<div class="bar">
-								<button type="button" class="btn small" onclick={() => (replyTo = null)} disabled={saving}>Cancel</button>
-								<button type="button" class="btn small primary" onclick={() => submitReply(t.id)} disabled={saving || !replyText.trim()}>
-									{saving ? 'Sending…' : 'Reply'}
+								<button type="button" class="btn small" onclick={() => (replyTo = null)} disabled={saving === 'reply'}>Cancel</button>
+								<button type="button" class="btn small primary" onclick={() => submitReply(t.id)} disabled={!!saving || !replyText.trim()}>
+									{saving === 'reply' ? 'Sending…' : 'Reply'}
 								</button>
 							</div>
 						</div>
@@ -180,11 +257,26 @@
 			></textarea>
 			<div class="bar">
 				<span class="hint">Markdown · <kbd>{mac ? '⌘' : 'Ctrl'}</kbd> <kbd>Enter</kbd> sends</span>
-				<button type="button" class="btn small primary" onclick={submit} disabled={saving || !text.trim()}>{saving && !replyTo ? 'Sending…' : 'Comment'}</button>
+				<button type="button" class="btn small primary" onclick={submit} disabled={!!saving || !text.trim()}>{saving === 'new' ? 'Sending…' : 'Comment'}</button>
 			</div>
 		</div>
 	{/if}
 </section>
+
+{#if deleting}
+	<ConfirmDialog
+		heading="Delete comment?"
+		message="This deletes the comment in GitLab for everyone. It can't be undone."
+		note={st.kind === 'ready' && st.threads.some((t) => t.comments[0].id === deleting?.id && t.comments.length > 1)
+			? 'The replies to it stay.'
+			: null}
+		confirmLabel="Delete comment"
+		busyLabel="Deleting…"
+		busy={deleteBusy}
+		onconfirm={confirmDelete}
+		oncancel={() => (deleting = null)}
+	/>
+{/if}
 
 <style>
 	.comments {
@@ -246,8 +338,10 @@
 		gap: 8px;
 		align-items: baseline;
 		font-size: 12.5px;
+		min-height: 24px;
 	}
-	.meta time {
+	.meta time,
+	.edited {
 		color: var(--text-muted);
 	}
 	.internal {
@@ -257,12 +351,79 @@
 		padding: 0 5px;
 		color: var(--text-secondary);
 	}
+	/* Like Linear: a comment's actions show on hover or keyboard focus */
+	.tools {
+		margin-left: auto;
+		display: flex;
+		gap: 2px;
+		opacity: 0;
+	}
+	.comment:hover .tools,
+	.tools:focus-within {
+		opacity: 1;
+	}
+	@media (hover: none) {
+		.tools {
+			opacity: 1;
+		}
+	}
 	.body {
-		white-space: pre-wrap;
 		overflow-wrap: anywhere;
 		font-size: 13.5px;
 		line-height: 1.5;
 		margin-top: 2px;
+	}
+	/* Rendered Markdown */
+	.md :global(:is(p, ul, ol, pre, blockquote, table)) {
+		margin: 0 0 6px;
+	}
+	.md :global(:last-child) {
+		margin-bottom: 0;
+	}
+	.md :global(:is(ul, ol)) {
+		padding-left: 20px;
+	}
+	.md :global(:is(h1, h2, h3, h4, h5, h6)) {
+		font-size: 14px;
+		margin: 8px 0 4px;
+	}
+	.md :global(code) {
+		font-family: var(--mono);
+		font-size: 12.5px;
+		background: var(--surface-2);
+		border: 1px solid var(--grid);
+		border-radius: 4px;
+		padding: 0 3px;
+	}
+	.md :global(pre) {
+		background: var(--surface-2);
+		border: 1px solid var(--grid);
+		border-radius: 6px;
+		padding: 8px 10px;
+		overflow-x: auto;
+	}
+	.md :global(pre code) {
+		border: 0;
+		padding: 0;
+		background: none;
+	}
+	.md :global(blockquote) {
+		border-left: 3px solid var(--border);
+		padding-left: 10px;
+		color: var(--text-secondary);
+	}
+	.md :global(table) {
+		border-collapse: collapse;
+		display: block;
+		overflow-x: auto;
+	}
+	.md :global(:is(th, td)) {
+		border: 1px solid var(--border);
+		padding: 3px 8px;
+	}
+	.md :global(li:has(> input[type='checkbox'])) {
+		list-style: none;
+		margin-left: -18px;
 	}
 	.reply-btn {
 		align-self: flex-start;

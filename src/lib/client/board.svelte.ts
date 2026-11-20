@@ -238,6 +238,29 @@ export class BoardState {
 		}
 	}
 
+	/** Edit a comment's text. Not optimistic: the editor keeps the text until GitLab has it. */
+	async editComment(itemId: string, noteId: string, body: string): Promise<{ ok: true; comment: Comment } | { ok: false; error: string }> {
+		const r = await this.commentRequest('PATCH', { itemId, noteId, body });
+		return r.ok && r.comment ? { ok: true, comment: r.comment } : { ok: false, error: r.error ?? "Couldn't save the comment" };
+	}
+
+	/** Delete a comment (the UI asks first). */
+	async deleteComment(itemId: string, noteId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+		const r = await this.commentRequest('DELETE', { itemId, noteId });
+		return r.ok ? { ok: true } : { ok: false, error: r.error ?? "Couldn't delete the comment" };
+	}
+
+	private async commentRequest(method: 'PATCH' | 'DELETE', payload: object): Promise<{ ok: boolean; comment?: Comment; error?: string }> {
+		try {
+			const res = await fetch('/api/items/comments', { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+			const r = (await res.json().catch(() => null)) as { ok?: boolean; comment?: Comment; error?: string } | null;
+			if (!res.ok || !r?.ok) return { ok: false, error: r?.error ?? `GitLab didn't take the change (HTTP ${res.status})` };
+			return { ok: true, comment: r.comment };
+		} catch {
+			return { ok: false, error: "Couldn't reach the board server." };
+		}
+	}
+
 	/**
 	 * Save a description. Not optimistic, unlike field edits: the editor keeps the text until GitLab
 	 * has it, so a failure never loses what was typed. `baseVersion` is the version the editor

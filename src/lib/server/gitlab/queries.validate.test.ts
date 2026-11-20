@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { buildSchema, parse, validate } from 'graphql';
-import { ALL_CAPABILITIES, COMMENTS_QUERY, createNoteMutation, workItemFragment } from './queries';
+import { ALL_CAPABILITIES, COMMENTS_QUERY, createNoteMutation, destroyNoteMutation, updateNoteMutation, workItemFragment } from './queries';
 
 const SDL = /* GraphQL */ `
 	scalar Time
@@ -31,11 +31,20 @@ const SDL = /* GraphQL */ `
 	enum CustomFieldType { SINGLE_SELECT MULTI_SELECT NUMBER TEXT DATE }
 
 	type Query { workItem(id: ID!): WorkItem }
-	type Mutation { createNote(input: CreateNoteInput!): CreateNotePayload }
+	type Mutation {
+		createNote(input: CreateNoteInput!): CreateNotePayload
+		updateNote(input: UpdateNoteInput!): UpdateNotePayload
+		destroyNote(input: DestroyNoteInput!): DestroyNotePayload
+	}
+	input UpdateNoteInput { id: NoteID! body: String }
+	type UpdateNotePayload { errors: [String!]! note: Note }
+	input DestroyNoteInput { id: NoteID! }
+	type DestroyNotePayload { errors: [String!]! note: Note }
+	type NotePermissions { adminNote: Boolean! }
 	input CreateNoteInput { noteableId: NoteableID! body: String! discussionId: DiscussionID internal: Boolean }
 	type CreateNotePayload { errors: [String!]! note: Note }
 	type PageInfo { hasNextPage: Boolean! endCursor: String }
-	type Note { id: NoteID! body: String! createdAt: Time! system: Boolean! internal: Boolean author: UserCore discussion: Discussion }
+	type Note { id: NoteID! body: String! createdAt: Time! lastEditedAt: Time system: Boolean! internal: Boolean author: UserCore discussion: Discussion userPermissions: NotePermissions! }
 	type NoteConnection { nodes: [Note] }
 	type Discussion { id: DiscussionID! notes: NoteConnection! }
 	type DiscussionConnection { pageInfo: PageInfo! nodes: [Discussion] }
@@ -128,7 +137,11 @@ describe('comments query and mutation against a GitLab-shaped schema', () => {
 	it('the comments query is valid', () => {
 		expect(validate(commentsSchema, parse(COMMENTS_QUERY)).map((e) => e.message)).toEqual([]);
 	});
-	it('the createNote mutation is valid', () => {
-		expect(validate(commentsSchema, parse(createNoteMutation)).map((e) => e.message)).toEqual([]);
+	it.each([
+		['createNote', createNoteMutation],
+		['updateNote', updateNoteMutation],
+		['destroyNote', destroyNoteMutation]
+	])('the %s mutation is valid', (_name, doc) => {
+		expect(validate(commentsSchema, parse(doc)).map((e) => e.message)).toEqual([]);
 	});
 });
