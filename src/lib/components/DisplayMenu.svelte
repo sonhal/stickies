@@ -65,83 +65,81 @@
 		>
 		Display
 	{/snippet}
-	{#snippet children()}
-		<div class="display">
-			<div class="seg" role="group" aria-label="Layout">
-				{#each LAYOUTS as [k, label] (k)}
-					<button type="button" aria-pressed={view.layout === k} onclick={() => setLayout(k)}>{label}</button>
-				{/each}
-			</div>
+	<div class="display">
+		<div class="seg" role="group" aria-label="Layout">
+			{#each LAYOUTS as [k, label] (k)}
+				<button type="button" aria-pressed={view.layout === k} onclick={() => setLayout(k)}>{label}</button>
+			{/each}
+		</div>
 
-				<label class="line"
-					><span>{view.layout === 'board' ? 'Columns' : 'Grouping'}</span>
-					<select class="input" value={keyOf(view.groupBy)} onchange={(e) => set('groupBy', refFor(e.currentTarget.value))}>
-						{#if view.layout !== 'board'}<option value="">No grouping</option>{/if}
-						{#if keyOf(view.groupBy) === '__missing'}<option value="__missing">(field removed)</option>{/if}
-						{#each groupFields as f (f.key)}<option value={f.key}>{f.name}</option>{/each}
-					</select>
-				</label>
-				<label class="line"
-					><span>{view.layout === 'board' ? 'Rows' : 'Sub-grouping'}</span>
-					<select class="input" value={keyOf(view.subGroupBy)} onchange={(e) => set('subGroupBy', refFor(e.currentTarget.value))}>
-						<option value="">None</option>
-						{#if keyOf(view.subGroupBy) === '__missing'}<option value="__missing">(field removed)</option>{/if}
-						{#each menuFields(board.reg, canGroupBy) as f (f.key)}<option value={f.key}>{f.name}</option>{/each}
-					</select>
-				</label>
-			<div class="line">
-				<label for="order-by">Ordering</label>
-				<div class="pair">
-					<select
-						id="order-by"
-						class="input"
-						value={orderKey}
-						onchange={(e) => {
-							const ref = refFor(e.currentTarget.value);
-							set('orderBy', ref ? [{ field: ref, dir: order?.dir ?? 'desc' }] : []);
-						}}
-					>
-						<option value="">Last updated</option>
-						{#each sortFields as f (f.key)}<option value={f.key}>{f.name}</option>{/each}
-					</select>
-					<button
-						type="button"
-						class="btn small"
-						disabled={!order}
-						title="Sort direction"
-						aria-label="Sort direction: {order?.dir === 'asc' ? 'ascending' : 'descending'}"
-						onclick={() => order && set('orderBy', [{ ...order, dir: order.dir === 'asc' ? 'desc' : 'asc' }])}
-						>{order?.dir === 'asc' ? '↑' : '↓'}</button
-					>
-				</div>
-			</div>
 			<label class="line"
-				><span>Completed issues</span>
-				<select class="input" value={view.display.completed} onchange={(e) => setDisplay('completed', e.currentTarget.value as CompletedWindow)}>
-					{#each COMPLETED as [k, label] (k)}<option value={k}>{label}</option>{/each}
+				><span>{view.layout === 'board' ? 'Columns' : 'Grouping'}</span>
+				<select class="input" value={keyOf(view.groupBy)} onchange={(e) => set('groupBy', refFor(e.currentTarget.value))}>
+					{#if view.layout !== 'board'}<option value="">No grouping</option>{/if}
+					{#if keyOf(view.groupBy) === '__missing'}<option value="__missing">(field removed)</option>{/if}
+					{#each groupFields as f (f.key)}<option value={f.key}>{f.name}</option>{/each}
 				</select>
 			</label>
-			{#if view.layout !== 'matrix'}
-				<label class="line"
-					><span>Sub-issues</span>
-					<select class="input" value={view.display.subIssues} onchange={(e) => setDisplay('subIssues', e.currentTarget.value as SubIssues)}>
-						{#each SUBS as [k, label] (k)}<option value={k}>{label}</option>{/each}
-					</select>
-				</label>
-				<label class="check"
-					><input type="checkbox" checked={view.display.showEmptyGroups} onchange={(e) => setDisplay('showEmptyGroups', e.currentTarget.checked)} />
-					Show empty groups</label
+			<label class="line"
+				><span>{view.layout === 'board' ? 'Rows' : 'Sub-grouping'}</span>
+				<select class="input" value={keyOf(view.subGroupBy)} onchange={(e) => set('subGroupBy', refFor(e.currentTarget.value))}>
+					<option value="">None</option>
+					{#if keyOf(view.subGroupBy) === '__missing'}<option value="__missing">(field removed)</option>{/if}
+					{#each menuFields(board.reg, canGroupBy) as f (f.key)}<option value={f.key}>{f.name}</option>{/each}
+				</select>
+			</label>
+		<div class="line">
+			<label for="order-by">Ordering</label>
+			<div class="pair">
+				<select
+					id="order-by"
+					class="input"
+					value={orderKey}
+					onchange={(e) => {
+						const ref = refFor(e.currentTarget.value);
+						set('orderBy', ref ? [{ field: ref, dir: order?.dir ?? 'desc' }] : []);
+					}}
 				>
-				<div class="menu-label">Properties</div>
-				<div class="props">
-					{#each propFields as f (f.key)}
-						{@const on = view.display.properties.some((p) => keyOf(p) === f.key)}
-						<button type="button" class="prop" aria-pressed={on} onclick={() => toggleProp(f.key)}>{f.name}</button>
-					{/each}
-				</div>
-			{/if}
+					<option value="">Last updated</option>
+					{#each sortFields as f (f.key)}<option value={f.key}>{f.name}</option>{/each}
+				</select>
+				<button
+					type="button"
+					class="btn small"
+					disabled={!order}
+					title="Sort direction"
+					aria-label="Sort direction: {order?.dir === 'asc' ? 'ascending' : 'descending'}"
+					onclick={() => order && set('orderBy', [{ ...order, dir: order.dir === 'asc' ? 'desc' : 'asc' }])}
+					>{order?.dir === 'asc' ? '↑' : '↓'}</button
+				>
+			</div>
 		</div>
-	{/snippet}
+		<label class="line"
+			><span>Completed issues</span>
+			<select class="input" value={view.display.completed} onchange={(e) => setDisplay('completed', e.currentTarget.value as CompletedWindow)}>
+				{#each COMPLETED as [k, label] (k)}<option value={k}>{label}</option>{/each}
+			</select>
+		</label>
+		{#if view.layout !== 'matrix'}
+			<label class="line"
+				><span>Sub-issues</span>
+				<select class="input" value={view.display.subIssues} onchange={(e) => setDisplay('subIssues', e.currentTarget.value as SubIssues)}>
+					{#each SUBS as [k, label] (k)}<option value={k}>{label}</option>{/each}
+				</select>
+			</label>
+			<label class="check"
+				><input type="checkbox" checked={view.display.showEmptyGroups} onchange={(e) => setDisplay('showEmptyGroups', e.currentTarget.checked)} />
+				Show empty groups</label
+			>
+			<div class="menu-label">Properties</div>
+			<div class="props">
+				{#each propFields as f (f.key)}
+					{@const on = view.display.properties.some((p) => keyOf(p) === f.key)}
+					<button type="button" class="prop" aria-pressed={on} onclick={() => toggleProp(f.key)}>{f.name}</button>
+				{/each}
+			</div>
+		{/if}
+	</div>
 </Popover>
 
 <style>

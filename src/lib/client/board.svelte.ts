@@ -22,11 +22,14 @@ export class BoardState {
 	/** Items with a write in flight (drawn dimmed) */
 	pending = new SvelteSet<string>();
 	/** In-flight writes per item: `pending` only clears when the last one finishes */
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- private bookkeeping, never read by a template
 	private inflight = new Map<string, number>();
 	/** Latest write started per item+field, with its value (review M3: out-of-order responses) */
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- private bookkeeping, never read by a template
 	private latest = new Map<string, { seq: number; id: string; key: WriteField; value: WriteValue }>();
 	private seq = 0;
 	/** The item as GitLab last confirmed it (load, refresh or a successful write): rollback target */
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- private bookkeeping, never read by a template
 	private confirmed = new Map<string, WorkItem>();
 	/**
 	 * Field changes made from this tab (saved, or still saving), oldest first, with the value that
@@ -35,7 +38,9 @@ export class BoardState {
 	private undoStack: { id: string; key: WriteField; previous: WriteValue; ref: string }[] = [];
 
 	reg: FieldRegistry = $derived(this.data.registry);
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- rebuilt by $derived, never mutated
 	byId: Map<string, WorkItem> = $derived(new Map(this.items.map((i) => [i.id, i])));
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- rebuilt by $derived, never mutated
 	fieldsByKey: Map<FieldKey, FieldDef> = $derived(new Map(this.reg.fields.map((f) => [f.key, f])));
 	colors: EpicColors = $derived(
 		new EpicColors(this.items, settings.epicColors, (id) => {
@@ -300,6 +305,7 @@ export class BoardState {
 	/** Set by the shell: a deleted item must stop being selected */
 	onremove: (id: string) => void = () => {};
 	/** Deleted from this tab: a refresh that was already on its way must not bring them back */
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- private bookkeeping, never read by a template
 	private removed = new Set<string>();
 
 	private forgetItem(id: string) {

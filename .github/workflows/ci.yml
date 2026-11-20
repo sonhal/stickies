@@ -33,6 +33,21 @@ jobs:
       - run: npm ci
       - run: npm run check -- --fail-on-warnings
 
+  lint:
+    name: Lint (ESLint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # Generates .svelte-kit/tsconfig.json, which the type-aware Svelte parser reads.
+      - run: npx svelte-kit sync
+      - run: npm run lint
+
   test:
     name: Unit tests (vitest)
     runs-on: ubuntu-latest

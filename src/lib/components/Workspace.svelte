@@ -142,7 +142,7 @@
 				details={matrixDetails}
 			/>
 		{:else if effective.layout === 'board'}
-			<BoardLayout view={effective} {result} {properties} {ctx} oncreate={createIn} />
+			<BoardLayout {result} {properties} {ctx} oncreate={createIn} />
 		{:else}
 			<ListLayout groups={result.groups} {properties} oncreate={createIn} />
 		{/if}

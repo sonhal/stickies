@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { registry, selectField, item, opt, many } from '$lib/testing/factory';
+import { registry, selectField, item, many } from '$lib/testing/factory';
 import { neutralizeQuickActions, planCreate, planUpdate } from './validate';
 import { guardWrite, MAX_BODY_BYTES, originAllowed } from './guard';
 import { RateLimiter } from './ratelimit';
