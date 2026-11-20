@@ -37,9 +37,10 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   `/kiosk/<KIOSK_KEY>?sidebar=hidden`. It isn't saved as anyone's preference, and stays in the URL through
   kiosk rotation and reloads until someone shows the sidebar. Without it, the sidebar is as you left it.
 - **`?cycle`** (optional) on a prioritization board makes it walk through its issues on its own, so a wall
-  screen shows each issue's full title and details in turn: `/p/standup?cycle` (every 15 s) or
-  `/p/standup?cycle=30` (every 30 s; 3–600, `0`/`off` = off). It starts on the first issue and follows the
-  walk-through order (Do → Schedule → Delegate → Drop, then triage; only focused epics), wrapping at the end.
+  screen shows each issue's full title and details in turn: `/p/priority-effort?cycle` (every 15 s) or
+  `/p/priority-effort?cycle=30` (every 30 s; 3–600, `0`/`off` = off). It starts on the first issue and follows the
+  walk-through order (Quick wins → Big bets → Fill-ins → Reconsider, then triage; only focused epics), wrapping
+  at the end. The old `/p/standup` address (the removed Eisenhower board) redirects there, keeping `?cycle`.
   Picking an issue yourself (click, `←`/`→`, the panel's arrows) restarts the countdown and the cycle carries on
   from there. `×`/`Esc` pauses until you pick an issue; the ❚❚ button or `Space` pauses until you press ▶. It
   also waits while someone is typing in an editor or a picker, dialog or the side panel is open. A thin bar

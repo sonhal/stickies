@@ -54,7 +54,9 @@ step('matrix (priority × effort) renders quadrants and the walk-through', async
 });
 
 step('matrix auto-cycle (?cycle) advances, restarts on a pick, pauses on Space', async (p) => {
+	// The old Eisenhower address redirects to priority × effort and keeps ?cycle
 	await open(p, '/p/standup?cycle=3');
+	await p.waitForURL('**/p/priority-effort?cycle=3');
 	await p.waitForSelector('.note.selected');
 	const sel = () => p.locator('.note.selected').getAttribute('data-item');
 	const first = await sel();

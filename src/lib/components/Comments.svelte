@@ -190,7 +190,8 @@
 					</div>
 				</div>
 			{:else}
-				<!-- Sanitized by renderMarkdown (allowlisted tags, safe links only); never raw GitLab text -->
+				<!-- The board's only {@html}: renderMarkdown sanitizes with DOMPurify (allowlisted tags, safe links only) -->
+				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 				<div class="body md">{@html renderMarkdown(c.body, item.url)}</div>
 			{/if}
 		</div>
