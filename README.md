@@ -43,8 +43,10 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   Picking an issue yourself (click, `←`/`→`, the panel's arrows) restarts the countdown and the cycle carries on
   from there. `×`/`Esc` pauses until you pick an issue; the ❚❚ button or `Space` pauses until you press ▶. It
   also waits while someone is typing in an editor or a picker, dialog or the side panel is open. A thin bar
-  under the arrows shows the time to the next issue. Works with the kiosk: `/kiosk/<KIOSK_KEY>?sidebar=hidden&cycle=20`
-  passes it on, and it stays through kiosk rotation.
+  under the arrows shows the time to the next issue. Like `?sidebar=hidden`, it **carries over from page to page**
+  (sidebar, palette, `G 1–9`, kiosk rotation) and stays in the URL through reloads, so every prioritization board
+  you open next cycles too, until a URL says `?cycle=off`. Works with the kiosk:
+  `/kiosk/<KIOSK_KEY>?sidebar=hidden&cycle=20` passes it on.
 - **Layouts:** List, and Board (columns from any single-select field, status, people, parent or epic;
   optional swimlanes; drag to update).
 - **Prioritization:** named tools in their own sidebar section, each an instance of a *tool type*:

@@ -18,7 +18,7 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { deleteText } from '$lib/client/deleteText';
 	import { readSidebarParam, withSidebarParam } from '$lib/client/urlState';
-	import { CYCLE_PARAM, cycleParamValue } from '$lib/client/autoCycle';
+	import { cycleAfterNavigate, cycleParamValue, withCycleParam } from '$lib/client/autoCycle';
 	import { rotationTarget } from '$lib/client/kioskRotation';
 	import type { Command } from '$lib/client/commands';
 	import type { NavDir } from '$lib/client/boardNav';
@@ -82,6 +82,8 @@
 	 * Desktop: sidebar hidden completely for more room. Remembered per browser when you toggle it
 	 * yourself. A URL with ?sidebar=hidden (e.g. a kiosk screen) hides it without saving that.
 	 */
+	// svelte-ignore state_referenced_locally
+	ui.cycle = cycleParamValue(page.url.searchParams);
 	let navHidden = $state(false);
 	/**
 	 * The sidebar is hidden because the URL said so. The param then stays in the address bar
@@ -166,11 +168,7 @@
 			const next = rotationTarget({ path: page.url.pathname, pages: kioskPages, now: Date.now(), lastInput, lastMove, rotateMs, busy });
 			if (!next) return;
 			lastMove = Date.now();
-			// ?cycle rides along, so every prioritization board on the screen keeps cycling.
-			// (?sidebar=hidden is put back by its own effect below.)
-			const cycle = cycleParamValue(new URL(location.href).searchParams);
-			const qs = cycle === null ? '' : cycle === '' ? `?${CYCLE_PARAM}` : `?${CYCLE_PARAM}=${cycle}`;
-			goto(next + qs);
+			goto(next); // ?sidebar=hidden and ?cycle are put back by their own effects below
 		}, 1000);
 		return () => {
 			clearInterval(t);
@@ -424,6 +422,7 @@
 		// From a link it isn't saved: opening a link doesn't change your own preference.
 		if (readSidebarParam(nav.to.url.searchParams)) navHidden = navHiddenByUrl = true;
 		else if (nav.type === 'enter') navHidden = storedNavHidden();
+		ui.cycle = cycleAfterNavigate(ui.cycle, nav.to.url.searchParams);
 		urlReady = true;
 	});
 
@@ -436,6 +435,16 @@
 		const keep = navHiddenByUrl && navHidden;
 		if (!urlReady) return;
 		const next = withSidebarParam(new URL(location.href), keep);
+		if (next) untrack(() => replaceState(next, page.state));
+	});
+
+	// ?cycle carries over the same way: once on, every prioritization board you open next cycles,
+	// and the param stays in the address bar so a reload keeps it. `?cycle=off` turns it off.
+	$effect(() => {
+		void page.url;
+		const cycle = ui.cycle;
+		if (!urlReady) return;
+		const next = withCycleParam(new URL(location.href), cycle);
 		if (next) untrack(() => replaceState(next, page.state));
 	});
 

@@ -8,10 +8,13 @@
  * - `?sidebar=hidden`: opens with the sidebar hidden, e.g. on a kiosk screen. Optional: without it
  *   the sidebar is as you left it. It isn't saved as your preference, and it stays in the URL
  *   (so a reload keeps it) until you show the sidebar yourself.
+ * - `?cycle[=<seconds>]`: prioritization boards walk through their issues on their own
+ *   ($lib/client/autoCycle.ts). It carries over from page to page the same way, until `?cycle=off`.
  *
  * The side panel is deliberately not in the URL: it's a quick look. Links go to the full page.
  */
 import type { WorkItem } from '$lib/fields/types';
+import { CYCLE_PARAM } from './autoCycle';
 
 export const SIDEBAR_PARAM = 'sidebar';
 
@@ -60,10 +63,12 @@ export function withSidebarParam(url: URL, hidden: boolean): URL | null {
 
 /**
  * For links and pages that build their own query string (share links, the epics list): adds
- * `?sidebar=hidden` back when the current URL has it.
+ * `?sidebar=hidden` and `?cycle` back when the current URL has them.
  */
 export function keepShellParams(qs: string, current: URLSearchParams): string {
 	const p = new URLSearchParams(qs);
 	if (readSidebarParam(current) && !p.has(SIDEBAR_PARAM)) p.set(SIDEBAR_PARAM, 'hidden');
+	const cycle = current.get(CYCLE_PARAM);
+	if (cycle !== null && !p.has(CYCLE_PARAM)) p.set(CYCLE_PARAM, cycle);
 	return p.toString();
 }
