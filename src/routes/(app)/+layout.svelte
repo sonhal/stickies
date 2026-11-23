@@ -20,6 +20,7 @@
 	import { readSidebarParam, withSidebarParam } from '$lib/client/urlState';
 	import { cycleAfterNavigate, cycleParamValue, withCycleParam } from '$lib/client/autoCycle';
 	import { rotationTarget } from '$lib/client/kioskRotation';
+	import { STATUS_PARAM, statusParamValue } from '$lib/client/statusParam';
 	import type { Command } from '$lib/client/commands';
 	import type { NavDir } from '$lib/client/boardNav';
 	import { appliesTo, closedKind } from '$lib/fields/registry';
@@ -167,7 +168,11 @@
 			const next = rotationTarget({ path: page.url.pathname, pages: kioskPages, now: Date.now(), lastInput, lastMove, rotateMs, busy });
 			if (!next) return;
 			lastMove = Date.now();
-			goto(next); // ?sidebar=hidden and ?cycle are put back by their own effects below
+			// ?status rides along, so every prioritization board on the screen shows the same statuses.
+			// ?f= (one board's whole filter) stays on its board. ?sidebar=hidden and ?cycle are put back
+			// by their own effects below.
+			const status = statusParamValue(new URL(location.href).searchParams);
+			goto(status === null ? next : `${next}?${STATUS_PARAM}=${encodeURIComponent(status).replace(/%2C/gi, ',')}`);
 		}, 1000);
 		return () => {
 			clearInterval(t);

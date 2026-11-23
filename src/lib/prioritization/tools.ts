@@ -64,7 +64,9 @@ export function toView(instance: ToolInstance): ViewDefinition {
 		filter: instance.filter,
 		layout: 'matrix',
 		orderBy: [],
-		display: { properties: [], subIssues: 'flat', showEmptyGroups: true, completed: 'none' },
+		// The filter alone decides which statuses show (done and canceled too), so closed items aren't
+		// dropped before it runs. CLOSED_DAYS_MAX still caps how far back closed items go.
+		display: { properties: [], subIssues: 'flat', showEmptyGroups: true, completed: 'all' },
 		matrix: toolType(instance).toMatrix(instance as never),
 		rankDirection: instance.rankDirection
 	};

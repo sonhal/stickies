@@ -53,6 +53,46 @@ step('matrix (priority × effort) renders quadrants and the walk-through', async
 	await p.waitForSelector('.note.selected');
 });
 
+step('prioritization: the filter is in the URL (?f=), ?status= is a shorthand for its Status rules', async (p) => {
+	const labels = async () => new Set(await p.locator('.note .status-label').allInnerTexts());
+	const params = () => new URL(p.url()).searchParams;
+	// Default: the config filter hides done and canceled
+	await open(p, '/p/priority-effort');
+	await p.waitForSelector('[aria-label="Value vs effort matrix"]');
+	await p.waitForSelector('text=Status is none of done, canceled');
+	if ((await labels()).has('Done')) throw new Error('done issues shown by default');
+	// ?status= sets the Status rules: only done, then everything but to do and done
+	await open(p, '/p/priority-effort?status=done');
+	await p.waitForSelector('text=Status is any of done');
+	const done = await labels();
+	if (!done.has('Done') || done.size !== 1) throw new Error(`?status=done shows ${[...done]}`);
+	await open(p, '/p/priority-effort?status=!toDo,!done&cycle=30');
+	await p.waitForSelector('text=Status is none of toDo, done');
+	const rest = await labels();
+	if (rest.has('To do') || rest.has('Done') || rest.size === 0) throw new Error(`?status=!toDo,!done shows ${[...rest]}`);
+	// A filter bar edit puts the whole filter in ?f= (keeping ?cycle, dropping ?status)
+	await p.click('text=+ Filter');
+	await p.locator('.menu-label, button, [role="option"]').getByText('Priority', { exact: true }).first().click();
+	await p.getByText('High', { exact: true }).first().click();
+	await p.click('button:has-text("Apply")');
+	await p.waitForURL((u) => u.searchParams.has('f'));
+	if (params().has('status') || params().get('cycle') !== '30') throw new Error(`after an edit: ${p.url()}`);
+	// Reload and a copied link keep every rule
+	await p.reload();
+	await p.waitForSelector('html[data-ready]');
+	await p.waitForSelector('text=Status is none of toDo, done');
+	await p.waitForSelector('text=Priority is any of High');
+	// A broken ?f= falls back to the config filter, with a notice
+	await open(p, '/p/priority-effort?f=garbage');
+	await p.waitForSelector("text=The filter in this link couldn't be read");
+	await p.waitForSelector('text=Status is none of done, canceled');
+	// Reset filter removes both params
+	await open(p, '/p/priority-effort?status=done&cycle=30');
+	await p.click('text=Reset filter');
+	await p.waitForURL((u) => !u.searchParams.has('status'));
+	if (new URL(p.url()).search !== '?cycle=30') throw new Error(`after reset: ${p.url()}`);
+});
+
 step('matrix auto-cycle (?cycle) advances, restarts on a pick, pauses on Space', async (p) => {
 	// The old Eisenhower address redirects to priority × effort and keeps ?cycle
 	await open(p, '/p/standup?cycle=3');

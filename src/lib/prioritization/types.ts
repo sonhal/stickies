@@ -18,7 +18,10 @@ interface InstanceBase {
 	id: string;
 	name: string;
 	description?: string;
-	/** Which items it looks at. Users can narrow it further with the filter bar. */
+	/**
+	 * Which items it looks at, done and canceled included: add a Status rule to hide them. Users change
+	 * it with the filter bar (kept in ?f=) or ?status= (statusParam.ts).
+	 */
 	filter: FilterGroup;
 	scope?: ViewScope;
 	/** Overrides the per-field rank direction for this instance */

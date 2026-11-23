@@ -161,7 +161,13 @@ function compileRule(rule: FilterRule, path: number[], ctx: EngineContext, repor
 				return null;
 			}
 			if (missing.length) report.partial = `${missing.join(', ')} no longer exist${missing.length === 1 ? 's' : ''}`;
-			const hit = (i: WorkItem) => valueIds(get(i)).some((id) => ids.has(id));
+			// "Any done status" also means closed items without a status (older GitLab, types without
+			// the status widget), which count as completed everywhere else too (closedKind).
+			const closedNoStatus = field.kind === 'status' && values.includes('category:done');
+			const hit = (i: WorkItem) => {
+				const vs = valueIds(get(i));
+				return vs.some((id) => ids.has(id)) || (closedNoStatus && vs.length === 0 && i.state === 'closed');
+			};
 			if (rule.cmp === 'is' || rule.cmp === 'anyOf' || rule.cmp === 'contains') return hit;
 			if (rule.cmp === 'isNot' || rule.cmp === 'noneOf') return (i) => !hit(i);
 			if (rule.cmp === 'gt' || rule.cmp === 'lt') {

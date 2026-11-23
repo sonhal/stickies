@@ -115,6 +115,15 @@ export function parseView(raw: unknown): ParseResult {
 	return { ok: true, view };
 }
 
+/** A filter on its own (a prioritization board's ?f=), with the same checks as a view's filter. */
+export function parseFilter(raw: unknown): FilterGroup | null {
+	const res = v.safeParse(FilterGroupSchema, raw);
+	if (!res.success) return null;
+	const filter = res.output as FilterGroup;
+	if (depth(filter) > MAX_DEPTH || countRules(filter) > MAX_RULES) return null;
+	return filter;
+}
+
 /** Parse a list of views (localStorage, import), skipping bad entries. */
 export function parseViewList(raw: unknown): { views: ViewDefinition[]; skipped: number } {
 	if (!Array.isArray(raw)) return { views: [], skipped: raw === null || raw === undefined ? 0 : 1 };
