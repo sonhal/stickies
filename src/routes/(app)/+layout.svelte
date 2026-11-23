@@ -16,6 +16,9 @@
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import ShortcutSheet from '$lib/components/ShortcutSheet.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import BulkBar from '$lib/components/BulkBar.svelte';
+	import { applyBulk } from '$lib/client/bulkApply';
+	import { countLabel } from '$lib/client/bulk';
 	import { deleteText } from '$lib/client/deleteText';
 	import { readSidebarParam, withSidebarParam } from '$lib/client/urlState';
 	import { cycleAfterNavigate, cycleParamValue, withCycleParam } from '$lib/client/autoCycle';
@@ -257,6 +260,11 @@
 				e.preventDefault();
 				board.undo();
 			}
+			// Mod+A: check every item on screen for a bulk edit (lists and boards).
+			if (!e.altKey && !e.shiftKey && e.key.toLowerCase() === 'a' && !ui.readOnly && ui.layout !== 'matrix' && ui.navOrder.length) {
+				e.preventDefault();
+				ui.selectAll();
+			}
 			// Mod+Backspace / Mod+Delete: only opens the confirmation, never deletes by itself.
 			if (!e.altKey && !e.shiftKey && (e.key === 'Backspace' || e.key === 'Delete') && !ui.readOnly && ui.selectedId) {
 				e.preventDefault();
@@ -311,6 +319,7 @@
 		}
 		if (key === 'Escape') {
 			if (showPanel) ui.close();
+			else if (ui.selection.size) ui.clearSelection();
 			else if (ui.pageBack) ui.pageBack();
 			else ui.selectedId = null;
 			return;
@@ -343,6 +352,20 @@
 			else if (dir === 'down' || dir === 'up') ui.move(dir === 'down' ? 1 : -1);
 			return;
 		}
+		// With items checked, S / A / L / I edit all of them (the bulk bar), not just the cursor's.
+		if (ui.selection.size && !ui.readOnly) {
+			const bulkKeys: Record<string, FieldKey> = { s: 'native:status', a: 'native:assignees', l: 'native:labels' };
+			if (bulkKeys[key]) {
+				e.preventDefault();
+				ui.bulkEdit(bulkKeys[key]);
+				return;
+			}
+			if (key === 'i') {
+				e.preventDefault();
+				bulkAssignToMe();
+				return;
+			}
+		}
 		if (!ui.selectedId) return;
 		if (key === 'Enter' || key === 'o') {
 			// Enter on a button or link is that control's own click (a focused card opens itself).
@@ -352,6 +375,11 @@
 			return;
 		}
 		if (ui.readOnly) return;
+		if (key === 'x') {
+			e.preventDefault();
+			ui.toggleSelect(ui.selectedId);
+			return;
+		}
 		if (key === 'i') {
 			e.preventDefault();
 			const item = board.byId.get(ui.selectedId);
@@ -390,6 +418,26 @@
 		board.update(item.id, 'native:assignees', [...ids, me]);
 	}
 
+	// ---- Bulk edit --------------------------------------------------------------------------------
+	const checkedItems = $derived([...ui.selection].map((id) => board.byId.get(id)).filter((i): i is WorkItem => !!i));
+
+	/** I with items checked: adds you to each of them (keeps the assignees already there) */
+	function bulkAssignToMe() {
+		const me = board.reg.currentUserId;
+		const f = board.field('native:assignees');
+		if (!me || !f) return ui.toast("Assignees can't be changed here");
+		applyBulk(board, (t) => ui.toast(t), checkedItems, f, { kind: 'add', id: me });
+	}
+
+	// A selection belongs to the page it was made on, and only to items still on screen: a filter
+	// change or collapsed group that hides an item unchecks it, so a bulk edit never reaches unseen items.
+	$effect(() => {
+		const visible = new Set(ui.navOrder);
+		untrack(() => {
+			for (const id of [...ui.selection]) if (!visible.has(id)) ui.selection.delete(id);
+		});
+	});
+
 	// ---- Delete ------------------------------------------------------------------------------------
 	/** Opens the confirmation. GitLab's permission hint decides whether to offer it at all. */
 	function askDelete(item: WorkItem) {
@@ -427,6 +475,7 @@
 		if (readSidebarParam(nav.to.url.searchParams)) navHidden = navHiddenByUrl = true;
 		else if (nav.type === 'enter') navHidden = storedNavHidden();
 		ui.cycle = cycleAfterNavigate(ui.cycle, nav.to.url.searchParams);
+		if (nav.from?.url.pathname !== nav.to.url.pathname) ui.clearSelection();
 		urlReady = true;
 	});
 
@@ -461,6 +510,8 @@
 			out.push({ id: 'act:new', group: 'Actions', label: 'New issue', hint: 'C', run: () => (ui.createOpen = { ...ui.createDefaults }) });
 		if (!ui.readOnly && hasEpicType)
 			out.push({ id: 'act:new-epic', group: 'Actions', label: 'New epic', run: () => (ui.createOpen = { ...ui.createDefaults, type: 'Epic' }) });
+		if (!ui.readOnly && ui.navOrder.length && ui.layout !== 'matrix')
+			out.push({ id: 'act:select-all', group: 'Actions', label: 'Select all issues on screen', hint: isMac ? '⌘ A' : 'Ctrl A', keywords: 'bulk edit check', run: () => ui.selectAll() });
 		if (!ui.readOnly)
 			out.push({ id: 'act:undo', group: 'Actions', label: 'Undo the last change', hint: isMac ? '⌘ Z' : 'Ctrl Z', run: () => board.undo() });
 		out.push(
@@ -469,9 +520,34 @@
 			{ id: 'act:theme', group: 'Actions', label: 'Switch theme (auto / dark / light)', run: cycleTheme },
 			{ id: 'go:epics', group: 'Actions', label: 'Go to epics', hint: 'G E', run: () => goto('/epics') }
 		);
+		// With items checked, actions apply to all of them.
+		const checked = checkedItems;
+		if (checked.length && !ui.readOnly) {
+			const group = `Selected: ${countLabel(checked)}`;
+			for (const f of board.reg.fields) {
+				if (!f.editable || !checked.some((i) => appliesTo(f, i.type))) continue;
+				if (f.kind === 'status' || (f.kind === 'singleSelect' && f.options?.length)) {
+					for (const o of f.options ?? [])
+						out.push({
+							id: `bulk:${f.key}:${o.id}`,
+							group,
+							label: `Set ${f.name}: ${o.label}`,
+							run: () => applyBulk(board, (t) => ui.toast(t), checked, f, { kind: 'set', value: o.id })
+						});
+				}
+			}
+			if (board.reg.currentUserId && board.field('native:assignees'))
+				out.push({ id: 'bulk:assign:me', group, label: 'Assign to me', hint: 'I', run: bulkAssignToMe });
+			out.push(
+				{ id: 'bulk:labels', group, label: 'Add or remove labels…', hint: 'L', run: () => ui.bulkEdit('native:labels') },
+				{ id: 'bulk:assignees', group, label: 'Add or remove assignees…', hint: 'A', run: () => ui.bulkEdit('native:assignees') },
+				{ id: 'bulk:parent', group, label: 'Set parent…', run: () => ui.bulkEdit('native:parent') },
+				{ id: 'bulk:clear', group, label: 'Clear selection', hint: 'Esc', run: () => ui.clearSelection() }
+			);
+		}
 		// Field actions on the selected item: status, every single-select field, assignees, parent.
 		const sel = ui.selectedId ? board.byId.get(ui.selectedId) : null;
-		if (sel && !ui.readOnly) {
+		if (sel && !ui.readOnly && !checked.length) {
 			const short = sel.ref.replace(/^.*\//, '');
 			for (const f of board.reg.fields) {
 				if (!f.editable || !appliesTo(f, sel.type)) continue;
@@ -539,13 +615,25 @@
 	{/if}
 	{#if navOpen}<button class="scrim" aria-label="Close navigation" onclick={() => (navOpen = false)}></button>{/if}
 
-	<main class="main">
+	<main class="main" class:bulk-pad={ui.selection.size > 0}>
 		<div class="topline">
 			<button type="button" class="btn ghost small menu-btn" aria-label="Open navigation" onclick={() => (navOpen = true)}>☰</button>
 			<span class="muted updated">
 				{#if offline}<span class="offline" role="status">Board server unreachable, retrying ·</span>{/if}
 				{#if board.data.fetchedAt}Updated {ago(board.data.fetchedAt, now)}{/if}
 			</span>
+			<button
+				type="button"
+				class="btn ghost small keys-btn"
+				onclick={() => (ui.shortcutsOpen = true)}
+				title="Keyboard shortcuts (?)"
+				aria-label="Keyboard shortcuts"
+				aria-keyshortcuts="?"
+			>
+				<svg width="15" height="11" viewBox="0 0 15 11" aria-hidden="true"><rect x="0.75" y="0.75" width="13.5" height="9.5" rx="1.75" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="M3 3.5h1M5.5 3.5h1M8 3.5h1M10.5 3.5h1M3 5.5h1M5.5 5.5h1M8 5.5h1M10.5 5.5h1M4.5 7.7h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg>
+				<span class="keys-label">Shortcuts</span>
+				<kbd>?</kbd>
+			</button>
 			<button class="btn ghost small" onclick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>
 			<button class="btn ghost small" onclick={cycleTheme} title="Theme: {theme}" aria-label="Theme: {theme}">
 				{theme === 'auto' ? 'Auto' : theme === 'dark' ? 'Dark' : 'Light'}
@@ -615,7 +703,9 @@
 		/>
 	{/if}
 
-	<div class="toasts" role="status" aria-live="polite">
+	{#if !ui.readOnly && ui.layout !== 'matrix'}<BulkBar />{/if}
+
+	<div class="toasts" class:above-bulk={ui.selection.size > 0} role="status" aria-live="polite">
 		{#each ui.toasts as t (t.id)}
 			<div class="toast" class:error={t.kind === 'error'}>
 				<span>{t.text}</span>
@@ -680,6 +770,10 @@
 		overflow-y: auto;
 		background: var(--surface-0);
 	}
+	/* Room to scroll the last rows out from under the bulk bar */
+	.main.bulk-pad {
+		padding-bottom: 72px;
+	}
 	.topline {
 		display: flex;
 		justify-content: flex-end;
@@ -737,6 +831,30 @@
 		gap: 8px;
 		z-index: 60;
 		pointer-events: none;
+	}
+	/* Above the bulk bar while it shows */
+	.toasts.above-bulk {
+		bottom: 72px;
+	}
+	.keys-btn {
+		gap: 6px;
+	}
+	.keys-btn kbd {
+		font-size: 10.5px;
+		line-height: 1;
+		padding: 2px 5px;
+		border: 1px solid var(--border);
+		border-bottom-width: 2px;
+		border-radius: 4px;
+		background: var(--surface-1);
+		color: var(--text-muted);
+		font-family: var(--mono);
+	}
+	@media (max-width: 720px) {
+		.keys-label,
+		.keys-btn kbd {
+			display: none;
+		}
 	}
 	.toast {
 		pointer-events: auto;

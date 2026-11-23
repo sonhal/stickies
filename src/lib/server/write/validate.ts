@@ -221,6 +221,45 @@ export function planUpdate(raw: unknown, reg: FieldRegistry, items: WorkItem[]):
 	return { ok: true, item, field: f.field, input: W.update(item.id, w.widgets) };
 }
 
+/** Most changes one bulk request may carry. The client sends a bigger selection in several requests. */
+export const BULK_MAX = 50;
+
+const BulkSchema = v.strictObject({
+	field: FieldName,
+	changes: v.pipe(v.array(v.strictObject({ itemId: ItemId, value: Value })), v.minLength(1), v.maxLength(BULK_MAX))
+});
+
+export interface BulkPlan {
+	ok: true;
+	field: string;
+	plans: UpdatePlan[];
+}
+
+/**
+ * One field, many items: `{ field, changes: [{ itemId, value }] }`. Each change can carry its own
+ * value (adding a label to items that have different labels gives each its own new list; undo puts
+ * each item's old value back). Every change is checked exactly like a single edit (planUpdate),
+ * and the whole request is refused when one of them is invalid: nothing reaches GitLab unless all
+ * of it can. Titles and descriptions are not bulk-editable.
+ */
+export function planBulk(raw: unknown, reg: FieldRegistry, items: WorkItem[]): BulkPlan | WriteError {
+	const parsed = v.safeParse(BulkSchema, raw);
+	if (!parsed.success) return fail('Invalid request');
+	const { field, changes } = parsed.output;
+	if (field === 'title' || field === 'description') return fail(`${field === 'title' ? 'Titles' : 'Descriptions'} can't be changed in bulk`);
+	if (new Set(changes.map((c) => c.itemId)).size !== changes.length) return fail('An item is listed twice');
+	const plans: UpdatePlan[] = [];
+	for (const c of changes) {
+		const p = planUpdate({ itemId: c.itemId, field, value: c.value }, reg, items);
+		if (!p.ok) {
+			const ref = items.find((i) => i.id === c.itemId)?.ref;
+			return { ...p, error: ref ? `${ref}: ${p.error}` : p.error };
+		}
+		plans.push(p);
+	}
+	return { ok: true, field, plans };
+}
+
 export interface CreatePlan {
 	ok: true;
 	input: Record<string, unknown>;

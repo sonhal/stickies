@@ -11,18 +11,27 @@ export class RateLimiter {
 		private maxKeys = 5_000
 	) {}
 
-	/** Records a hit and returns true when it's allowed. */
-	take(key: string, now = Date.now()): boolean {
+	/**
+	 * Records `n` hits and returns true when all of them are allowed. All or nothing: when there
+	 * isn't room for `n`, none is recorded (a bulk edit is refused whole, never cut off halfway).
+	 */
+	take(key: string, now = Date.now(), n = 1): boolean {
 		const since = now - this.windowMs;
 		const list = (this.hits.get(key) ?? []).filter((t) => t > since);
-		if (list.length >= this.limit) {
+		if (list.length + n > this.limit) {
 			this.hits.set(key, list);
 			return false;
 		}
-		list.push(now);
+		for (let i = 0; i < n; i++) list.push(now);
 		this.hits.delete(key);
 		this.hits.set(key, list);
 		while (this.hits.size > this.maxKeys) this.hits.delete(this.hits.keys().next().value!);
 		return true;
+	}
+
+	/** How many more hits `key` may make right now. */
+	remaining(key: string, now = Date.now()): number {
+		const since = now - this.windowMs;
+		return Math.max(0, this.limit - (this.hits.get(key) ?? []).filter((t) => t > since).length);
 	}
 }

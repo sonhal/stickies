@@ -83,6 +83,23 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   Changes show at once and roll back with a message if GitLab refuses them.
   **Delete** an issue or epic from the side panel, the palette or `⌘/Ctrl Backspace`, always after a
   confirmation, and only offered when GitLab says you may (normally project Owners).
+- **Bulk edit** (lists and boards): check issues with the checkbox that appears on hover, `X` on the
+  selected issue, `⌘/Ctrl`-click, `Shift`-click for a range, or `⌘/Ctrl A` for everything on screen. A bar
+  at the bottom then sets **Status**, **Assignees**, **Labels** or any other option field (**More…**:
+  Priority, Effort, milestone, iteration, parent…) on all of them; with issues checked, `S` / `A` / `L` open
+  those pickers and `I` assigns you to each. The command palette offers the same actions.
+  - Single-value fields are *set* on every item. Multi-value fields (labels, assignees, multi-selects) are
+    *added* or *removed*, keeping each item's other values: the picker marks an option ✓ when every checked
+    item has it (picking it then takes it off all of them) and "2 of 5" when some do. Adding a scoped label
+    replaces each item's label of that scope.
+  - Items the field doesn't apply to (Status on an epic) or that GitLab wouldn't allow (a task under an
+    epic, a cycle of parents) are skipped, and the toast says so.
+  - Optimistic like single edits: everything changes at once, and an item GitLab refuses (permissions can
+    differ per project) rolls back alone; the toast says how many were saved and why the rest weren't.
+    **One `⌘/Ctrl Z` takes back the whole bulk edit**, putting each item's own previous value back.
+  - Only items on screen can be checked: a filter, search or collapsed group that hides one unchecks it, and
+    the selection is cleared when you leave the page. `Esc` unchecks all (after closing the panel). Not on
+    a read-only kiosk.
 - **Weight is hidden.** The board prioritizes by Priority and Effort, so GitLab's weight isn't shown,
   filtered, sorted, grouped or edited (the server refuses weight writes); GitLab keeps the values.
   `settings.hiddenFields` in [`src/lib/views.config.ts`](src/lib/views.config.ts) lists the hidden fields:
@@ -112,9 +129,9 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   value. A new, renamed, reordered or removed field or option shows up after the next schema refresh
   (≤ 10 minutes). A view that refers to a field that's gone still loads: the rule shows as a struck-through
   "field removed" chip and is ignored.
-- **Keyboard:** press `?` for the full list. `⌘/Ctrl K` command palette · `j`/`k` or `↑`/`↓` move · `Enter`/`o` open ·
+- **Keyboard:** press `?` or the **Shortcuts** button at the top right for the full list. `⌘/Ctrl K` command palette · `j`/`k` or `↑`/`↓` move · `Enter`/`o` open ·
   `Esc` close · `/` search · `f` add a filter · `c` create · `s` status · `a` assignees · `i` assign to me · `l` labels ·
-  `⌘/Ctrl Z` undo the last change · `⌘/Ctrl Backspace` delete (asks first) · `g` then `1`–`9`/`e`/`h` go to a view, epics, home · `[` hide/show the sidebar ·
+  `⌘/Ctrl Z` undo the last change · `⌘/Ctrl Backspace` delete (asks first) · `x` check for bulk edit, `⌘/Ctrl A` check all · `g` then `1`–`9`/`e`/`h` go to a view, epics, home · `[` hide/show the sidebar ·
   on a board, `h`/`j`/`k`/`l` or arrows move between cards and columns, `Alt`+`←`/`→` (or `Shift`+`h`/`l`) moves the selected
   card · in a 2×2 matrix, `←`/`→` (or `j`/`k`) walk the board. The list lives in
   [`src/lib/client/shortcuts.ts`](src/lib/client/shortcuts.ts).
@@ -181,7 +198,7 @@ effort, weight and status), to see how views and matrices look with real volume.
 | `ITEMS_MAX` | `5000` | Most open items fetched (and, separately, most recently closed ones), newest-updated first. Past it the board shows a warning. Loading takes about 3 s per 100 items on first load. |
 | `CACHE_SECONDS` | `30` | Per-viewer item cache. |
 | `SCHEMA_CACHE_SECONDS` | `600` | Per-viewer field schema cache (custom fields, statuses, projects, labels…). |
-| `WRITE_RATE_PER_MINUTE` | `60` | Writes per signed-in user per minute. |
+| `WRITE_RATE_PER_MINUTE` | `60` | Writes per signed-in user per minute. A bulk edit counts one per item. |
 | `GITLAB_ITEMS_MODE` | `group` | `group`: one `group.workItems(includeDescendants)` query. `projects`: one query per project, if your GitLab's group query doesn't return project issues (the introspection script tells you). |
 | `GITLAB_LABEL_FILTER` | | Only items that have ALL these labels (comma-separated titles). |
 | `BOARD_VERSION` | git commit | **Build time.** The version shown at the bottom of the sidebar. By default the short commit hash of the checkout being built (`-dirty` if it has uncommitted changes); set it when building without a `.git` directory, e.g. `BOARD_VERSION=$(git rev-parse --short HEAD) npm run build`, or the Docker build arg (see [Docker](#docker)). |
@@ -204,9 +221,9 @@ so the board limits what it does with it:
 | Risk | What the board does |
 |---|---|
 | A stolen session cookie gives a powerful token | The cookie is AES-256-GCM sealed (HKDF-derived key), `HttpOnly`, `Secure`, `SameSite=Lax`. Sessions last `SESSION_MAX_AGE_DAYS` (default **1 day**). Sign-out revokes both tokens in GitLab. |
-| A board bug is used to call arbitrary GitLab APIs | There is **no GraphQL proxy**. The browser sends `{ itemId, field, value }`; the server validates it against the viewer's own FieldRegistry and items (the option must belong to the field, the field must apply to the item's type, titles ≤ 255 chars, no parent cycles, one label per `scope::`…) and only then builds one of **three allowlisted mutations** (`workItemUpdate` with specific widgets, `workItemCreate`, and `workItemDelete`, whose only input is the id of an item on the viewer's own board, sent as `{ itemId }` to `/api/items/delete`). |
+| A board bug is used to call arbitrary GitLab APIs | There is **no GraphQL proxy**. The browser sends `{ itemId, field, value }`; the server validates it against the viewer's own FieldRegistry and items (the option must belong to the field, the field must apply to the item's type, titles ≤ 255 chars, no parent cycles, one label per `scope::`…) and only then builds one of **three allowlisted mutations** (`workItemUpdate` with specific widgets, `workItemCreate`, and `workItemDelete`, whose only input is the id of an item on the viewer's own board, sent as `{ itemId }` to `/api/items/delete`). A **bulk edit** (`/api/items/bulk`: `{ field, changes: [{ itemId, value }] }`, at most 50) is the same `workItemUpdate` per item: every change is validated exactly like a single edit, and the whole request is refused before anything reaches GitLab if one of them is invalid. Titles and descriptions can't be bulk-edited. |
 | Cross-site requests (CSRF) | Write endpoints only accept same-origin JSON (`Origin` must match `ORIGIN`). Sign-out is a POST covered by SvelteKit's origin check. |
-| A runaway client | `WRITE_RATE_PER_MINUTE` (default 60) per user, in memory. |
+| A runaway client | `WRITE_RATE_PER_MINUTE` (default 60) per user, in memory. A bulk edit counts **one write per item**, taken all at once up front: a request that doesn't fit what's left this minute is refused whole (and says how many are left), never cut off halfway. GitLab gets at most 4 of its writes at a time. |
 | XSS would act as the user | Strict CSP (no inline or third-party scripts; all libraries are bundled), all GitLab content rendered as text, no `{@html}`, links filtered to http(s). |
 | Misconfigured GitLab application | The board refuses a user token whose scope isn't exactly `api` (broader, e.g. `api sudo`, or narrower, e.g. `read_api`). |
 

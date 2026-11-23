@@ -12,6 +12,8 @@
 		align?: 'left' | 'right';
 		disabled?: boolean;
 		width?: string;
+		/** Open above the trigger (for a bar at the bottom of the screen) */
+		up?: boolean;
 	}
 
 	let {
@@ -23,7 +25,8 @@
 		triggerTitle,
 		align = 'left',
 		disabled = false,
-		width = '280px'
+		width = '280px',
+		up = false
 	}: Props = $props();
 
 	let root: HTMLElement | undefined = $state();
@@ -62,7 +65,7 @@
 		onclick={() => (open = !open)}>{@render trigger()}</button
 	>
 	{#if open}
-		<div class="panel" class:right={align === 'right'} role="dialog" aria-label={label} style="width: {width}">
+		<div class="panel" class:right={align === 'right'} class:up role="dialog" aria-label={label} style="width: {width}">
 			{@render children(close)}
 		</div>
 	{/if}
@@ -88,6 +91,10 @@
 		border-radius: 10px;
 		box-shadow: var(--shadow-pop);
 		padding: 6px;
+	}
+	.panel.up {
+		top: auto;
+		bottom: calc(100% + 6px);
 	}
 	.panel.right {
 		left: auto;

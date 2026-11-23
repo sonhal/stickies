@@ -188,6 +188,8 @@
 		class:closed={!!closed}
 		class:pending={board.pending.has(item.id)}
 		class:dragging={dragging?.id === item.id}
+		class:checked={ui.selection.has(item.id)}
+		class:selecting={ui.selection.size > 0}
 		draggable={canDrag}
 		role="button"
 		tabindex="0"
@@ -197,13 +199,38 @@
 		style="--epic: {slotVar(board.colors.slotFor(item))}"
 		ondragstart={(e) => onDragStart(e, item, colKey, lane)}
 		ondragend={() => ((dragging = null), (over = null))}
-		onclick={() => {
+		onclick={(e) => {
 			lastCell = { lane: laneIndex, col: colIndex };
-			ui.open(item.id);
+			// Shift+click checks a range, Mod+click one card (bulk edit); a plain click opens it.
+			if (!ui.readOnly && e.shiftKey) {
+				ui.selectRange(item.id);
+				ui.selectedId = item.id;
+			} else if (!ui.readOnly && (e.metaKey || e.ctrlKey)) {
+				ui.toggleSelect(item.id);
+				ui.selectedId = item.id;
+			} else ui.open(item.id);
 		}}
 		onkeydown={(e) => onCardKey(e, item, colIndex, laneIndex)}
 	>
 		<div class="top">
+			{#if !ui.readOnly}
+				<button
+					class="check"
+					type="button"
+					role="checkbox"
+					aria-checked={ui.selection.has(item.id)}
+					aria-label="Select {item.ref} for bulk edit"
+					title="Select (X) · Shift+click selects a range"
+					onclick={(e) => {
+						e.stopPropagation();
+						if (e.shiftKey) ui.selectRange(item.id);
+						else ui.toggleSelect(item.id);
+					}}
+					onkeydown={(e) => e.stopPropagation()}
+				>
+					{#if ui.selection.has(item.id)}<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 5.2 4 7.5 8.5 2.5" fill="none" stroke="currentColor" stroke-width="1.8" /></svg>{/if}
+				</button>
+			{/if}
 			<span class="ref">{item.ref.replace(/^.*\//, '')}</span>
 			{#if a?.kind === 'people' && a.ids.length}<Avatar id={a.ids[0]} name={personName(board.reg, a.ids[0])} size={18} />{/if}
 		</div>
@@ -410,13 +437,40 @@
 	.card.closed .title span {
 		color: var(--text-muted);
 	}
+	.card.checked {
+		background: var(--selected);
+	}
 	.top {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		gap: 6px;
 		min-height: 18px;
 	}
+	/* Bulk-edit checkbox: shown on hover, and on every card while anything is selected */
+	.check {
+		display: none;
+		place-items: center;
+		width: 14px;
+		height: 14px;
+		padding: 0;
+		border: 1.5px solid var(--border);
+		border-radius: 4px;
+		background: var(--surface-1);
+		color: #fff;
+		cursor: pointer;
+		flex: none;
+	}
+	.card:hover .check,
+	.card:focus-within .check,
+	.card.selecting .check {
+		display: grid;
+	}
+	.card.checked .check {
+		background: var(--accent);
+		border-color: var(--accent);
+	}
 	.ref {
+		margin-right: auto;
 		font-family: var(--mono);
 		font-size: 11.5px;
 		color: var(--text-muted);

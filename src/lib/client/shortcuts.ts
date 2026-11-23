@@ -5,7 +5,7 @@
 
 /** Where a shortcut works: everywhere, on list and board views, or on one layout only. */
 export type ShortcutContext = 'global' | 'items' | 'list' | 'board' | 'matrix';
-export type ShortcutGroup = 'Navigation' | 'Issue actions' | 'Board' | 'Matrix' | 'General';
+export type ShortcutGroup = 'Navigation' | 'Issue actions' | 'Selection' | 'Board' | 'Matrix' | 'General';
 
 export interface Shortcut {
 	group: ShortcutGroup;
@@ -22,7 +22,7 @@ export interface Shortcut {
 	note?: string;
 }
 
-export const SHORTCUT_GROUPS: ShortcutGroup[] = ['Navigation', 'Issue actions', 'Board', 'Matrix', 'General'];
+export const SHORTCUT_GROUPS: ShortcutGroup[] = ['Navigation', 'Issue actions', 'Selection', 'Board', 'Matrix', 'General'];
 
 export const SHORTCUTS: Shortcut[] = [
 	{ group: 'Navigation', label: 'Next issue', keys: ['J', '↓'], context: 'list' },
@@ -35,13 +35,19 @@ export const SHORTCUTS: Shortcut[] = [
 	{ group: 'Navigation', label: 'Add a filter', keys: ['F'], context: 'global' },
 
 	{ group: 'Issue actions', label: 'New issue', keys: ['C'], context: 'global', write: true },
-	{ group: 'Issue actions', label: 'Change status', keys: ['S'], context: 'items', write: true },
-	{ group: 'Issue actions', label: 'Change assignees', keys: ['A'], context: 'items', write: true },
-	{ group: 'Issue actions', label: 'Assign to me', keys: ['I'], context: 'items', write: true },
-	{ group: 'Issue actions', label: 'Change labels', keys: ['L'], context: 'list', write: true, note: 'lists only' },
+	{ group: 'Issue actions', label: 'Change status', keys: ['S'], context: 'items', write: true, note: 'of every checked issue, if any' },
+	{ group: 'Issue actions', label: 'Change assignees', keys: ['A'], context: 'items', write: true, note: 'of every checked issue, if any' },
+	{ group: 'Issue actions', label: 'Assign to me', keys: ['I'], context: 'items', write: true, note: 'every checked issue, if any' },
+	{ group: 'Issue actions', label: 'Change labels', keys: ['L'], context: 'list', write: true, note: 'lists only; every checked issue, if any' },
 	{ group: 'Issue actions', label: 'Undo the last change', keys: ['Mod+Z'], context: 'global', write: true },
 	// Always asks first: the key only opens the confirmation, never deletes by itself.
 	{ group: 'Issue actions', label: 'Delete issue…', keys: ['Mod+Backspace', 'Mod+Delete'], context: 'global', write: true },
+
+	// Bulk edit: checked issues get a bar at the bottom of the screen (status, assignees, labels…).
+	{ group: 'Selection', label: 'Check or uncheck the issue', keys: ['X'], context: 'items', write: true },
+	{ group: 'Selection', label: 'Check one more issue', keys: ['Mod+Click'], context: 'items', write: true },
+	{ group: 'Selection', label: 'Check a range of issues', keys: ['Shift+Click'], context: 'items', write: true },
+	{ group: 'Selection', label: 'Check every issue on screen', keys: ['Mod+A'], context: 'items', write: true },
 
 	{ group: 'Board', label: 'Up / down in the column', keys: ['↑', '↓', 'K', 'J'], context: 'board' },
 	{ group: 'Board', label: 'Neighbouring column', keys: ['←', '→', 'H', 'L'], context: 'board' },
@@ -55,7 +61,7 @@ export const SHORTCUTS: Shortcut[] = [
 	{ group: 'General', label: 'Command palette', keys: ['Mod+K'], context: 'global' },
 	{ group: 'General', label: 'Keyboard shortcuts', keys: ['?'], context: 'global' },
 	{ group: 'General', label: 'Hide or show the sidebar', keys: ['['], context: 'global' },
-	{ group: 'General', label: 'Close, step by step', note: 'dialog, panel, selection', keys: ['Esc'], context: 'global' }
+	{ group: 'General', label: 'Close, step by step', note: 'dialog, panel, checked issues, selection', keys: ['Esc'], context: 'global' }
 ];
 
 /** The shortcuts to show, by group, without empty groups. A read-only screen gets no write shortcuts. */

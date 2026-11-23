@@ -1,7 +1,9 @@
 /** Shell-wide UI state: selection, panel, palette, toasts. Shared through context. */
 import { getContext, setContext } from 'svelte';
+import { SvelteSet } from 'svelte/reactivity';
 import type { FieldKey } from '$lib/fields/types';
 import type { NavDir } from './boardNav';
+import { rangeIds } from './bulk';
 
 export interface Toast {
 	id: number;
@@ -69,6 +71,46 @@ export class UiState {
 	 * The shell's key handler calls this instead of `move`. Cleared when the layout goes away.
 	 */
 	nav: LayoutNav | null = null;
+	/**
+	 * Items checked for a bulk edit (x, Shift/Mod+click, Mod+A), separate from `selectedId` (the
+	 * keyboard cursor / open item). Cleared when the page changes.
+	 */
+	selection = new SvelteSet<string>();
+	/** Where a Shift+click range starts: the last item checked or unchecked by itself */
+	private anchor: string | null = null;
+	/** Ask the bulk bar to open a picker (s, a, l with items checked), like editRequest for the panel */
+	bulkRequest = $state<{ field: FieldKey; n: number } | null>(null);
+
+	/** x, Mod+click: check or uncheck one item */
+	toggleSelect(id: string) {
+		if (this.readOnly) return;
+		if (this.selection.has(id)) this.selection.delete(id);
+		else this.selection.add(id);
+		this.anchor = id;
+	}
+
+	/** Shift+click: check everything from the anchor to here, in on-screen order */
+	selectRange(id: string) {
+		if (this.readOnly) return;
+		for (const x of rangeIds(this.navOrder, this.anchor, id)) this.selection.add(x);
+		this.anchor = id;
+	}
+
+	/** Mod+A: check every item on screen */
+	selectAll() {
+		if (this.readOnly) return;
+		for (const id of this.navOrder) this.selection.add(id);
+	}
+
+	clearSelection() {
+		this.selection.clear();
+		this.anchor = null;
+	}
+
+	bulkEdit(field: FieldKey) {
+		if (!this.selection.size || this.readOnly) return;
+		this.bulkRequest = { field, n: (this.bulkRequest?.n ?? 0) + 1 };
+	}
 
 	open(id: string) {
 		this.selectedId = id;
@@ -95,6 +137,7 @@ export class UiState {
 
 	/** An item is gone (deleted): stop selecting it and close its panel. */
 	forget(id: string) {
+		this.selection.delete(id);
 		if (this.selectedId === id) {
 			this.selectedId = null;
 			this.panelOpen = false;

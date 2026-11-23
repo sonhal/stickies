@@ -15,6 +15,19 @@
 	const closed = $derived(closedKind(board.reg, item));
 	const assignees = $derived(item.values['native:assignees']);
 	const pending = $derived(board.pending.has(item.id));
+	const checked = $derived(ui.selection.has(item.id));
+
+	/** Click opens; Shift+click checks a range, Mod+click checks one (bulk edit) */
+	function onClick(e: MouseEvent) {
+		if (!ui.readOnly && e.shiftKey) {
+			e.preventDefault();
+			ui.selectRange(item.id);
+		} else if (!ui.readOnly && (e.metaKey || e.ctrlKey)) {
+			e.preventDefault();
+			ui.toggleSelect(item.id);
+		} else ui.open(item.id);
+		ui.selectedId = item.id;
+	}
 </script>
 
 <div
@@ -22,12 +35,27 @@
 	class:selected={ui.selectedId === item.id}
 	class:closed={!!closed}
 	class:pending
+	class:checked
+	class:selecting={ui.selection.size > 0}
 	style="--depth: {depth}"
 	data-item={item.id}
 	role="row"
 	aria-selected={ui.selectedId === item.id}
 >
-	<button class="hit" type="button" onclick={() => ui.open(item.id)} aria-label="Open {item.ref}: {item.title}"></button>
+	<button class="hit" type="button" onclick={onClick} aria-label="Open {item.ref}: {item.title}"></button>
+	{#if !ui.readOnly}
+		<button
+			class="check"
+			type="button"
+			role="checkbox"
+			aria-checked={checked}
+			aria-label="Select {item.ref} for bulk edit"
+			title="Select (X) · Shift+click selects a range"
+			onclick={(e) => (e.shiftKey ? ui.selectRange(item.id) : ui.toggleSelect(item.id))}
+		>
+			{#if checked}<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 5.2 4 7.5 8.5 2.5" fill="none" stroke="currentColor" stroke-width="1.8" /></svg>{/if}
+		</button>
+	{/if}
 	<span class="epic" style="background: {slotVar(board.colors.slotFor(item))}" title={board.epicTitle(item)}></span>
 	<StatusIcon status={board.status(item)} />
 	<span class="ref">{item.ref.replace(/^.*\//, '')}</span>
@@ -54,7 +82,7 @@
 		align-items: center;
 		gap: 10px;
 		height: 38px;
-		padding: 0 16px 0 calc(16px + var(--depth) * 22px);
+		padding: 0 16px 0 calc(28px + var(--depth) * 22px);
 		border-bottom: 1px solid var(--grid);
 		font-size: 13.5px;
 	}
@@ -72,6 +100,9 @@
 		bottom: 0;
 		width: 2px;
 		background: var(--accent);
+	}
+	.row.checked {
+		background: var(--selected);
 	}
 	.row.pending {
 		opacity: 0.7;
@@ -148,6 +179,35 @@
 		position: relative;
 		z-index: 1;
 		pointer-events: none;
+	}
+	/* Checkbox in the left gutter: shown on hover, and always while anything is selected */
+	.row > .check {
+		position: absolute;
+		left: calc(7px + var(--depth) * 22px);
+		top: 50%;
+		transform: translateY(-50%);
+		z-index: 2;
+		pointer-events: auto;
+		display: grid;
+		place-items: center;
+		width: 15px;
+		height: 15px;
+		padding: 0;
+		border: 1.5px solid var(--border);
+		border-radius: 4px;
+		background: var(--surface-1);
+		color: #fff;
+		cursor: pointer;
+		opacity: 0;
+	}
+	.row:hover > .check,
+	.row.selecting > .check,
+	.row > .check:focus-visible {
+		opacity: 1;
+	}
+	.row.checked > .check {
+		background: var(--accent);
+		border-color: var(--accent);
 	}
 	@media (max-width: 720px) {
 		.props {

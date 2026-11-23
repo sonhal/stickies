@@ -621,6 +621,111 @@ step('an old matrix share link opens as a list with a notice', async (p) => {
 	if (await p.locator('[aria-label="Value vs effort matrix"]').count()) throw new Error('old link still drew a matrix');
 });
 
+step('the Shortcuts button in the top bar opens the keyboard shortcut sheet', async (p) => {
+	await open(p, '/v/team');
+	// The labelled button in the top bar (the sidebar's small ? stays too)
+	await p.click('.topline button.keys-btn:has-text("Shortcuts")');
+	await p.waitForSelector('[aria-labelledby="shortcut-title"]');
+	if (!(await p.locator('text=Check or uncheck the issue').count())) throw new Error('the sheet has no Selection shortcuts');
+	await p.keyboard.press('Escape');
+	await p.waitForSelector('[aria-labelledby="shortcut-title"]', { state: 'detached' });
+});
+
+step('bulk edit: check a range, set status on all of them, one Mod+Z takes it all back', async (p) => {
+	await open(p, '/v/team');
+	const rows = p.locator('.list [data-item]');
+	const ids = await rows.evaluateAll((els) => els.slice(0, 3).map((e) => e.getAttribute('data-item')));
+	const row = (id) => p.locator(`.list [data-item="${id}"]`);
+	// Checkbox on the first, Shift+checkbox on the third: a range of three
+	await row(ids[0]).hover();
+	await row(ids[0]).locator('.check').click();
+	await row(ids[2]).locator('.check').click({ modifiers: ['Shift'] });
+	await p.waitForSelector('[role="toolbar"] >> text=3');
+	for (const id of ids) if ((await row(id).getAttribute('class')).indexOf('checked') === -1) throw new Error(`${id} not checked`);
+	const before = await writes();
+	const statusText = () => Promise.all(ids.map((id) => row(id).locator('.status-icon').first().getAttribute('aria-label')));
+	const was = await statusText();
+	await p.click('[role="toolbar"] button:has-text("Status")');
+	await p.keyboard.type('Blocked');
+	await p.keyboard.press('Enter');
+	await p.waitForSelector('text=/Status: Blocked on 3 issues/');
+	if ((await statusText()).some((t) => t !== 'Blocked')) throw new Error(`not all Blocked: ${await statusText()}`);
+	if (was.every((t) => t === 'Blocked')) throw new Error('pick rows that are not already Blocked');
+	if ((await writes()) - before !== 3) throw new Error(`expected 3 writes, got ${(await writes()) - before}`);
+	// Esc unchecks (no panel open), then undo puts each item's own status back
+	await p.locator('body').click({ position: { x: 5, y: 5 } }).catch(() => {});
+	await p.keyboard.press('Escape');
+	await p.waitForSelector('[role="toolbar"][aria-label^="Edit"]', { state: 'detached' });
+	await p.keyboard.press('ControlOrMeta+z');
+	await p.waitForSelector('text=/Undone: Status: Blocked on 3 issues/');
+	if ((await writes()) - before !== 6) throw new Error('undo did not write the three items back');
+	const now = await statusText();
+	if (JSON.stringify(now) !== JSON.stringify(was)) throw new Error(`statuses not restored: ${JSON.stringify(was)} → ${JSON.stringify(now)}`);
+});
+
+step('bulk edit from the keyboard: X checks, Mod+A checks everything, L adds a label to each', async (p) => {
+	await open(p, '/v/team');
+	await p.keyboard.press('j');
+	await p.keyboard.press('x');
+	await p.waitForSelector('[role="toolbar"] >> text=1');
+	await p.keyboard.press('ControlOrMeta+a');
+	const n = await p.locator('.list [data-item]').count();
+	await p.waitForSelector(`[role="toolbar"] strong:text-is("${n}")`);
+	await p.keyboard.press('Escape');
+	// Two items, then L opens the labels picker in the bulk bar
+	await p.keyboard.press('x');
+	await p.keyboard.press('j');
+	await p.keyboard.press('x');
+	await p.waitForSelector('[role="toolbar"] strong:text-is("2")');
+	await p.keyboard.press('l');
+	const search = p.locator('[role="toolbar"] input[aria-label^="Add or remove labels"]');
+	await search.waitFor();
+	const first = (await p.locator('[role="toolbar"] [role="option"] .label').first().innerText()).trim();
+	await search.fill(first);
+	await p.keyboard.press('Enter');
+	// Added to both, or taken off both when both had it already (✓ in the picker)
+	await p.waitForSelector('text=/(Added .* to 2 issues|Removed .* from 2 issues)/');
+	await p.keyboard.press('Escape'); // close the picker
+	await p.keyboard.press('Escape'); // uncheck
+});
+
+step('bulk keys work after checking with the mouse only (no keyboard cursor)', async (p) => {
+	await open(p, '/v/team');
+	const rows = p.locator('.list [data-item]');
+	await rows.nth(0).hover();
+	await rows.nth(0).locator('.check').click();
+	await p.keyboard.press('s');
+	await p.locator('[role="toolbar"] input[aria-label^="Set status"]').waitFor();
+	await p.keyboard.press('Escape');
+	await p.keyboard.press('Escape');
+	await p.waitForSelector('[role="toolbar"][aria-label^="Edit"]', { state: 'detached' });
+});
+
+step('bulk edit is offered on a board too (Mod+click a card)', async (p) => {
+	await open(p, '/v/active');
+	const cards = p.locator('.board .card');
+	await cards.nth(0).click({ modifiers: ['ControlOrMeta'] });
+	await cards.nth(1).click({ modifiers: ['ControlOrMeta'] });
+	await p.waitForSelector('[role="toolbar"] strong:text-is("2")');
+	if (await p.locator('aside[aria-label="Issue details"]').count()) throw new Error('Mod+click opened the panel');
+	await p.keyboard.press('Escape');
+});
+
+step('a bulk write is refused cross-origin, and a bad change refuses the whole request', async (p) => {
+	const res = await p.request.post(BASE + '/api/items/bulk', {
+		headers: { origin: 'https://evil.example', 'content-type': 'application/json' },
+		data: { field: 'native:assignees', changes: [{ itemId: 'gid://gitlab/WorkItem/2000', value: [] }] }
+	});
+	if (res.status() !== 403) throw new Error(`cross-origin bulk got ${res.status()}`);
+	const before = await writes();
+	const bad = await p.request.post(BASE + '/api/items/bulk', {
+		headers: { origin: BASE, 'content-type': 'application/json' },
+		data: { field: 'native:status', changes: [{ itemId: 'gid://gitlab/WorkItem/2000', value: 'not-a-status' }] }
+	});
+	if (bad.status() !== 400 && bad.status() !== 404) throw new Error(`invalid bulk got ${bad.status()}`);
+	if ((await writes()) !== before) throw new Error('an invalid bulk request reached GitLab');
+});
+
 step('the kiosk shows config views and cannot write', async (p, ctx, browser) => {
 	const k = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 	const kp = await k.newPage();

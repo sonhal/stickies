@@ -316,3 +316,98 @@ describe('BoardState.remove (delete)', () => {
 		expect(b.byId.has(other.id)).toBe(false);
 	});
 });
+
+describe('BoardState.updateMany (bulk edit)', () => {
+	type BulkCall = { url: string; body: { field: string; changes: { itemId: string; value: unknown }[] }; reply: (r: Reply) => void };
+	function stubBulk() {
+		const calls: BulkCall[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				(url: string, init: { body: string }) =>
+					new Promise((resolve) => {
+						calls.push({ url, body: JSON.parse(init.body), reply: (r) => resolve({ ok: r.status < 400, status: r.status, json: async () => r.body }) });
+					})
+			)
+		);
+		return calls;
+	}
+	const [HIGH, LOW] = prio.options!.map((o) => o.id);
+	function setupMany(n: number) {
+		const items = Array.from({ length: n }, (_, i) => item({ 'custom:7': opt(LOW) }, { title: `T${i}` }));
+		const data: BoardData = { items, registry: registry([prio]), fetchedAt: null, stale: false, problem: null, groupLabel: 'g', closedDaysMax: 30 };
+		const b = new BoardState(data);
+		const toasts: string[] = [];
+		b.notify = (t) => toasts.push(t);
+		const prioOf = (id: string) => (b.byId.get(id)!.values['custom:7'] as { id: string }).id;
+		return { b, items, toasts, prioOf };
+	}
+	const saved = (i: WorkItem, value: string) => ({ itemId: i.id, ok: true, item: { ...i, values: { ...i.values, 'custom:7': opt(value) }, updatedAt: '2026-11-02T00:00:00Z' } });
+
+	it('shows every change at once, keeps what GitLab saved and rolls back what it refused', async () => {
+		const calls = stubBulk();
+		const { b, items, toasts, prioOf } = setupMany(3);
+		const p = b.updateMany('custom:7', items.map((i) => ({ id: i.id, value: HIGH })), { label: 'Set Priority: High on 3 issues' });
+		flushSync();
+		expect(items.map((i) => prioOf(i.id))).toEqual([HIGH, HIGH, HIGH]);
+		expect(calls[0].url).toBe('/api/items/bulk');
+		expect(calls[0].body).toEqual({ field: 'custom:7', changes: items.map((i) => ({ itemId: i.id, value: HIGH })) });
+		calls[0].reply({
+			status: 200,
+			body: { ok: true, results: [saved(items[0], HIGH), { itemId: items[1].id, ok: false, error: 'no permission' }, saved(items[2], HIGH)] }
+		});
+		const r = await p;
+		expect(r).toMatchObject({ done: 2, failed: [items[1].id] });
+		expect(items.map((i) => prioOf(i.id))).toEqual([HIGH, LOW, HIGH]);
+		expect(b.pending.size).toBe(0);
+		expect(toasts.at(-1)).toBe(`Changed 2 of 3. ${items[1].ref}: no permission`);
+	});
+
+	it('rolls everything back when the server refuses the request (rate limit, validation)', async () => {
+		const calls = stubBulk();
+		const { b, items, toasts, prioOf } = setupMany(2);
+		const p = b.updateMany('custom:7', items.map((i) => ({ id: i.id, value: HIGH })));
+		calls[0].reply({ status: 429, body: { ok: false, error: 'Too many' } });
+		expect((await p).failed).toHaveLength(2);
+		expect(items.map((i) => prioOf(i.id))).toEqual([LOW, LOW]);
+		expect(toasts.at(-1)).toBe('Too many');
+		// Nothing was saved, so there is nothing to undo
+		b.undo();
+		expect(toasts.at(-1)).toBe('Nothing to undo');
+	});
+
+	it('one undo takes back the whole bulk edit, with each item’s own previous value', async () => {
+		const calls = stubBulk();
+		const { b, items, toasts, prioOf } = setupMany(2);
+		// Give the second item a different starting value
+		const p0 = b.update(items[1].id, 'custom:7', HIGH);
+		calls[0].reply(ok({ ...items[1], values: { ...items[1].values, 'custom:7': opt(HIGH) } }));
+		await p0;
+		const p = b.updateMany('custom:7', items.map((i) => ({ id: i.id, value: null })), { label: 'Cleared Priority on 2 issues' });
+		calls[1].reply({ status: 200, body: { ok: true, results: items.map((i) => ({ itemId: i.id, ok: true, item: { ...i, values: { 'native:type': opt('Issue') } } })) } });
+		await p;
+		const u = b.undo();
+		await tick();
+		expect(calls[2].url).toBe('/api/items/bulk');
+		expect(calls[2].body.changes).toEqual([
+			{ itemId: items[0].id, value: LOW },
+			{ itemId: items[1].id, value: HIGH }
+		]);
+		calls[2].reply({ status: 200, body: { ok: true, results: [saved(items[0], LOW), saved(items[1], HIGH)] } });
+		expect(await u).toBe(true);
+		expect(items.map((i) => prioOf(i.id))).toEqual([LOW, HIGH]);
+		expect(toasts.at(-1)).toBe('Undone: Cleared Priority on 2 issues');
+	});
+
+	it('sends a big selection in requests of 50', async () => {
+		const calls = stubBulk();
+		const { b, items } = setupMany(120);
+		const p = b.updateMany('custom:7', items.map((i) => ({ id: i.id, value: HIGH })));
+		for (let n = 0; n < 3; n++) {
+			await tick();
+			calls[n].reply({ status: 200, body: { ok: true, results: calls[n].body.changes.map((c) => saved(items.find((i) => i.id === c.itemId)!, HIGH)) } });
+		}
+		expect((await p).done).toBe(120);
+		expect(calls.map((c) => c.body.changes.length)).toEqual([50, 50, 20]);
+	});
+});

@@ -11,7 +11,7 @@ import { capabilitiesFor, loadBoard, updateCachedItem } from '../gitlab/load';
 import { mutationOutcome } from '../gitlab/mutations';
 import type { RawWorkItem } from '../gitlab/normalize';
 import { createWorkItemMutation, updateWorkItemMutation } from '../gitlab/queries';
-import { planCreate, planUpdate } from './validate';
+import { planBulk, planCreate, planUpdate } from './validate';
 import { descriptionVersion, fetchDescription } from './description';
 
 interface Payload {
@@ -23,7 +23,10 @@ export type WriteResponse = { ok: true; item: WorkItem } | { ok: false; error: s
 
 const reply = (body: WriteResponse, status = 200) => json(body, { status, headers: { 'cache-control': 'no-store' } });
 
-async function run(session: Session, kind: 'update' | 'create', input: Record<string, unknown>) {
+type RunResult = { ok: true; item: WorkItem } | { ok: false; error: string; status: number };
+
+/** One allowlisted mutation with the session's own token; the cache entry is updated in place. */
+async function runOne(session: Session, kind: 'update' | 'create', input: Record<string, unknown>): Promise<RunResult> {
 	const cfg = serverConfig();
 	const caps = await capabilitiesFor(session);
 	const doc = kind === 'update' ? updateWorkItemMutation(caps) : createWorkItemMutation(caps);
@@ -32,11 +35,11 @@ async function run(session: Session, kind: 'update' | 'create', input: Record<st
 		const outcome = mutationOutcome(data[kind === 'update' ? 'workItemUpdate' : 'workItemCreate'], topLevel);
 		if (!outcome.ok) {
 			console.warn(`[write] ${kind} rejected by GitLab:`, outcome.log);
-			return reply({ ok: false, error: outcome.error }, outcome.status);
+			return { ok: false, error: outcome.error, status: outcome.status };
 		}
 		const item = updateCachedItem(session, outcome.workItem);
-		if (!item) return reply({ ok: false, error: 'GitLab answered, but the result could not be read.' }, 502);
-		return reply({ ok: true, item });
+		if (!item) return { ok: false, error: 'GitLab answered, but the result could not be read.', status: 502 };
+		return { ok: true, item };
 	} catch (err) {
 		if (err instanceof GitLabError) {
 			const status = err.status === 401 ? 401 : err.status === 403 ? 403 : 502;
@@ -46,11 +49,63 @@ async function run(session: Session, kind: 'update' | 'create', input: Record<st
 					: err.status === 403
 						? "You don't have permission to change this in GitLab."
 						: err.message;
-			return reply({ ok: false, error }, status);
+			return { ok: false, error, status };
 		}
 		console.error('[write]', err);
-		return reply({ ok: false, error: 'Unexpected error while saving.' }, 500);
+		return { ok: false, error: 'Unexpected error while saving.', status: 500 };
 	}
+}
+
+async function run(session: Session, kind: 'update' | 'create', input: Record<string, unknown>) {
+	const r = await runOne(session, kind, input);
+	return r.ok ? reply({ ok: true, item: r.item }) : reply({ ok: false, error: r.error }, r.status);
+}
+
+/** GitLab calls a bulk edit makes at the same time: quick for 50 items, gentle on GitLab. */
+const BULK_CONCURRENCY = 4;
+
+export type BulkResult = { itemId: string; ok: true; item: WorkItem } | { itemId: string; ok: false; error: string };
+
+/** Runs `fn` over `list` with at most `limit` calls in flight; results keep the order of `list`. */
+export async function pool<T, R>(list: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+	const out = new Array<R>(list.length);
+	let next = 0;
+	const worker = async () => {
+		while (next < list.length) {
+			const i = next++;
+			out[i] = await fn(list[i]);
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(limit, list.length) }, worker));
+	return out;
+}
+
+/**
+ * Bulk edit: one field on many items (see planBulk). All changes are validated before any is
+ * sent. `charge(n)` takes the rate-limit hits for the whole request up front (one per item, so a
+ * bulk edit can't get around WRITE_RATE_PER_MINUTE) and returns how many were left when it refuses.
+ * GitLab can still refuse single items (permissions differ per project): each gets its own result.
+ */
+export async function executeBulk(session: Session, body: unknown, charge: (n: number) => true | number) {
+	const board = await loadBoard(session);
+	if (board.problem && !board.stale) return reply({ ok: false, error: board.problem.message }, 503);
+	const plan = planBulk(body, board.registry, board.items);
+	if (!plan.ok) return reply({ ok: false, error: plan.error }, plan.status);
+	const charged = charge(plan.plans.length);
+	if (charged !== true) {
+		return reply(
+			{
+				ok: false,
+				error: `That's ${plan.plans.length} changes, and you can make ${charged} more this minute. Select fewer items, or wait a minute.`
+			},
+			429
+		);
+	}
+	const results = await pool(plan.plans, BULK_CONCURRENCY, async (p): Promise<BulkResult> => {
+		const r = await runOne(session, 'update', p.input);
+		return r.ok ? { itemId: p.item.id, ok: true, item: r.item } : { itemId: p.item.id, ok: false, error: r.error };
+	});
+	return json({ ok: true, results }, { headers: { 'cache-control': 'no-store' } });
 }
 
 export async function executeUpdate(session: Session, body: unknown) {
