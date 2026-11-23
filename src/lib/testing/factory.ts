@@ -94,6 +94,7 @@ export function item(values: Partial<Record<string, FieldValue>> = {}, extra: Pa
 		title: `Item ${n}`,
 		url: null,
 		description: '',
+		descriptionMarkdown: '',
 		descriptionTruncated: false,
 		state: 'open',
 		closedAt: null,

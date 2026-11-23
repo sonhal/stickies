@@ -7,8 +7,8 @@
 
 	/**
 	 * The side panel's description: the read view (from DetailPanel) plus an editor for the full
-	 * Markdown. The board only holds a shortened plain-text copy, so editing first loads the real
-	 * text from GitLab. Saving is explicit (button or ⌘/Ctrl+Enter), never on blur: a long text
+	 * Markdown. The board only holds shortened copies (plain text, and Markdown for reading), so
+	 * editing first loads the real text from GitLab. Saving is explicit (button or ⌘/Ctrl+Enter), never on blur: a long text
 	 * shouldn't be saved by a stray click. A draft survives switching issues (see drafts.ts).
 	 */
 	let { item, read }: { item: WorkItem; read: Snippet } = $props();

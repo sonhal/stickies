@@ -86,7 +86,7 @@ browser:  ViewDefinition (config file │ localStorage │ URL) ─▶ resolve f
 
 - **Items query** (paginated): `group(fullPath) { workItems(includeDescendants: true, types: [EPIC, ISSUE, TASK], state: opened) }`
   with these widgets: `hierarchy { parent { id } }`, `status`, `customFields`, `assignees`, `labels`, `milestone`,
-  `iteration`, `weight`, `startAndDueDate`, `description` (converted to plain text on the server, as today).
+  `iteration`, `weight`, `startAndDueDate`, `description` (converted to plain text on the server; a bounded Markdown copy, `descriptionMarkdown`, is rendered through the sanitizer in detail views).
 - **Completed and canceled items, like Linear (D7).** Each view has a display option
   **Completed issues: All / Past day / Past week / Past month / None**. The default is *Past week* for list and board
   views and *None* for the matrix. A second query fetches items closed in the last 30 days (`CLOSED_DAYS_MAX`, configurable)
@@ -128,7 +128,7 @@ interface OptionDef { id: string; label: string; position: number; category?: St
 
 interface WorkItem {
   id: string; iid: number; ref: string; type: string; title: string; url: string | null;
-  description: string; descriptionTruncated: boolean;
+  description: string; descriptionMarkdown: string; descriptionTruncated: boolean;
   state: 'open' | 'closed'; closedAt: string | null; createdAt: string; updatedAt: string;
   projectId: string | null; parentId: string | null;
   values: Partial<Record<FieldKey, FieldValue>>;  // EVERY field, custom or native, lives here

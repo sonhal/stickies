@@ -5,6 +5,7 @@
 	import type { FieldDef, WorkItem } from '$lib/fields/types';
 	import { slotVar } from '$lib/colors';
 	import StatusIcon from './ui/StatusIcon.svelte';
+	import Markdown from './Markdown.svelte';
 
 	interface Props {
 		item: WorkItem;
@@ -70,7 +71,6 @@
 	const childrenDone = $derived(children.filter((c) => closedKind(board.reg, c)).length);
 	/** GitLab counts children the board doesn't hold (closed long ago, or not visible to you) */
 	const childrenElsewhere = $derived(item.progress ? Math.max(0, item.progress.total - children.length) : 0);
-	const paragraphs = $derived(item.description ? item.description.split(/\n{2,}/) : []);
 	const closed = $derived(closedKind(board.reg, item));
 	const updatedLocally = $derived(item.updatedAt);
 </script>
@@ -116,11 +116,11 @@
 
 {#snippet readDescription()}
 	<div class="desc">
-		{#each paragraphs as p, i (i)}
-			<p>{p}</p>
+		{#if item.descriptionMarkdown || item.description}
+			<Markdown text={item.descriptionMarkdown || item.description} url={item.url} fallback={item.description} />
 		{:else}
 			<p class="muted"><em>No description.</em></p>
-		{/each}
+		{/if}
 		{#if item.descriptionTruncated && item.url}
 			<a href={item.url} target="_blank" rel="noopener noreferrer">Read the rest in GitLab ↗</a>
 		{/if}
@@ -348,10 +348,11 @@
 		font-size: 14px;
 		line-height: 1.55;
 	}
-	.desc p {
+	.desc > p {
 		margin: 0 0 0.7em;
-		white-space: pre-line;
-		overflow-wrap: anywhere;
+	}
+	.desc > :global(.md) {
+		margin-bottom: 0.7em;
 	}
 	.children h3 {
 		font-size: 13px;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MARKDOWN_INPUT_MAX, markdownToText, truncate } from './text';
+import { MARKDOWN_INPUT_MAX, markdownExcerpt, markdownToText, truncate } from './text';
 
 describe('markdownToText', () => {
 	it('keeps the words and drops the syntax', () => {
@@ -78,5 +78,25 @@ describe('markdownToText stays fast on hostile input (review M5)', () => {
 		expect(markdownToText('<!-- hidden -->\n```js\nconst x = 1;\n```\n**Bold** and [link](https://x) ![pic](y.png)')).toBe(
 			'const x = 1;\n\nBold and link [image: pic]'.replace('\n\n', '\n')
 		);
+	});
+});
+
+describe('markdownExcerpt', () => {
+	it('keeps the Markdown, drops HTML comments and normalizes line ends', () => {
+		expect(markdownExcerpt('<!-- template -->\r\n## Steps\r\n\r\n| a | b |\n|---|---|\n| `Map<K, V>` | 2 |', 1000)).toEqual({
+			text: '## Steps\n\n| a | b |\n|---|---|\n| `Map<K, V>` | 2 |',
+			truncated: false
+		});
+	});
+	it('cuts at a line break and says so', () => {
+		const md = Array.from({ length: 50 }, (_, i) => `- item ${i}`).join('\n');
+		const r = markdownExcerpt(md, 100);
+		expect(r.truncated).toBe(true);
+		expect(r.text.length).toBeLessThanOrEqual(100);
+		expect(md.startsWith(r.text + '\n')).toBe(true);
+	});
+	it('marks input beyond MARKDOWN_INPUT_MAX as truncated', () => {
+		expect(markdownExcerpt('a'.repeat(MARKDOWN_INPUT_MAX + 1), MARKDOWN_INPUT_MAX * 2).truncated).toBe(true);
+		expect(markdownExcerpt(null, 10)).toEqual({ text: '', truncated: false });
 	});
 });

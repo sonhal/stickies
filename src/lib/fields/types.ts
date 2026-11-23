@@ -93,8 +93,17 @@ export interface WorkItem {
 	title: string;
 	/** Only ever an http(s) URL, or null */
 	url: string | null;
-	/** Plain text (Markdown stripped on the server), truncated. Rendered as text, never HTML. */
+	/**
+	 * Plain text (Markdown stripped on the server), truncated. Rendered as text, never HTML. For
+	 * one-line previews and search; detail views render `descriptionMarkdown` instead.
+	 */
 	description: string;
+	/**
+	 * The Markdown as written in GitLab, HTML comments removed, cut at a line break near
+	 * DESCRIPTION_MARKDOWN_MAX characters. Untrusted: only ever shown through renderMarkdown.
+	 */
+	descriptionMarkdown: string;
+	/** Either copy was cut short: link to GitLab for the rest */
 	descriptionTruncated: boolean;
 	state: 'open' | 'closed';
 	closedAt: string | null;

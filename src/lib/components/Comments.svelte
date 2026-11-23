@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getBoard } from '$lib/client/board.svelte';
 	import { getUi } from '$lib/client/ui.svelte';
-	import { renderMarkdown } from '$lib/client/markdown';
+	import Markdown from './Markdown.svelte';
 	import { COMMENT_MAX, type Comment, type CommentThread } from '$lib/comments';
 	import type { WorkItem } from '$lib/fields/types';
 	import Avatar from './ui/Avatar.svelte';
@@ -190,9 +190,7 @@
 					</div>
 				</div>
 			{:else}
-				<!-- The board's only {@html}: renderMarkdown sanitizes with DOMPurify (allowlisted tags, safe links only) -->
-				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-				<div class="body md">{@html renderMarkdown(c.body, item.url)}</div>
+				<div class="body"><Markdown text={c.body} url={item.url} /></div>
 			{/if}
 		</div>
 	</div>
@@ -373,58 +371,6 @@
 		font-size: 13.5px;
 		line-height: 1.5;
 		margin-top: 2px;
-	}
-	/* Rendered Markdown */
-	.md :global(:is(p, ul, ol, pre, blockquote, table)) {
-		margin: 0 0 6px;
-	}
-	.md :global(:last-child) {
-		margin-bottom: 0;
-	}
-	.md :global(:is(ul, ol)) {
-		padding-left: 20px;
-	}
-	.md :global(:is(h1, h2, h3, h4, h5, h6)) {
-		font-size: 14px;
-		margin: 8px 0 4px;
-	}
-	.md :global(code) {
-		font-family: var(--mono);
-		font-size: 12.5px;
-		background: var(--surface-2);
-		border: 1px solid var(--grid);
-		border-radius: 4px;
-		padding: 0 3px;
-	}
-	.md :global(pre) {
-		background: var(--surface-2);
-		border: 1px solid var(--grid);
-		border-radius: 6px;
-		padding: 8px 10px;
-		overflow-x: auto;
-	}
-	.md :global(pre code) {
-		border: 0;
-		padding: 0;
-		background: none;
-	}
-	.md :global(blockquote) {
-		border-left: 3px solid var(--border);
-		padding-left: 10px;
-		color: var(--text-secondary);
-	}
-	.md :global(table) {
-		border-collapse: collapse;
-		display: block;
-		overflow-x: auto;
-	}
-	.md :global(:is(th, td)) {
-		border: 1px solid var(--border);
-		padding: 3px 8px;
-	}
-	.md :global(li:has(> input[type='checkbox'])) {
-		list-style: none;
-		margin-left: -18px;
 	}
 	.reply-btn {
 		align-self: flex-start;

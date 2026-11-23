@@ -5,7 +5,7 @@
  * a missing widget or an unexpected value drops that one value, never the item or the page.
  * Shapes marked VERIFY(phase0) are listed in the README under "Things to verify against your GitLab".
  */
-import { MARKDOWN_INPUT_MAX, markdownToText, truncate } from '$lib/text';
+import { MARKDOWN_INPUT_MAX, markdownExcerpt, markdownToText, truncate } from '$lib/text';
 import { PARENT_NOT_LOADED } from '$lib/fields/registry';
 import {
 	type FieldDef,
@@ -23,6 +23,12 @@ import {
 
 /** Enough for a standup read-through; the full text is one click away in GitLab. */
 export const DESCRIPTION_MAX_CHARS = 2500;
+/**
+ * The Markdown copy the detail views render. Larger than the plain-text cut, since Markdown
+ * spends characters on syntax and link addresses, but still bounded: every item on the board
+ * carries it.
+ */
+export const DESCRIPTION_MARKDOWN_MAX = 6000;
 
 // ---- Raw shapes (what we expect GitLab to send) -----------------------------------------------
 
@@ -333,6 +339,7 @@ export function normalizeWorkItem(raw: RawWorkItem, ctx: NormalizeContext): Work
 	const desc = truncate(markdownToText(description), DESCRIPTION_MAX_CHARS);
 	// Only the first MARKDOWN_INPUT_MAX characters are converted: say so even if the text came out short
 	if ((description?.length ?? 0) > MARKDOWN_INPUT_MAX) desc.truncated = true;
+	const md = markdownExcerpt(description, DESCRIPTION_MARKDOWN_MAX);
 	const iid = Number(raw.iid);
 	return {
 		id: raw.id,
@@ -342,7 +349,8 @@ export function normalizeWorkItem(raw: RawWorkItem, ctx: NormalizeContext): Work
 		title: raw.title,
 		url: safeUrl(raw.webUrl),
 		description: desc.text,
-		descriptionTruncated: desc.truncated,
+		descriptionMarkdown: md.text,
+		descriptionTruncated: desc.truncated || md.truncated,
 		state: String(raw.state).toUpperCase() === 'CLOSED' ? 'closed' : 'open',
 		closedAt: raw.closedAt ?? null,
 		createdAt: raw.createdAt,

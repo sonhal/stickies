@@ -13,7 +13,7 @@
 export const MARKDOWN_INPUT_MAX = 20_000;
 
 /** Remove <!-- … --> comments with a single forward scan (a regex here backtracks on unclosed ones). */
-function stripComments(s: string): string {
+export function stripComments(s: string): string {
 	let out = '';
 	let i = 0;
 	for (;;) {
@@ -69,4 +69,21 @@ export function truncate(text: string, max: number): { text: string; truncated: 
 	const space = cut.lastIndexOf(' ');
 	// Back up to the last space unless that would throw away more than half the text.
 	return { text: (space > max * 0.5 ? cut.slice(0, space) : cut).trimEnd() + '…', truncated: true };
+}
+
+/**
+ * The start of a Markdown text for the board to render: HTML comments removed (issue templates are
+ * full of them, and GitLab doesn't show them), cut at the last line break before `max` characters
+ * so a cut never splits a line. A cut inside a code block or table still renders: an unclosed
+ * fence runs to the end, as it would in GitLab.
+ */
+export function markdownExcerpt(md: string | null | undefined, max: number): { text: string; truncated: boolean } {
+	if (!md) return { text: '', truncated: false };
+	const s = stripComments(md.slice(0, MARKDOWN_INPUT_MAX).replace(/\r\n?/g, '\n')).trim();
+	const cutInput = md.length > MARKDOWN_INPUT_MAX;
+	if (s.length <= max) return { text: s, truncated: cutInput };
+	const cut = s.slice(0, max);
+	const nl = cut.lastIndexOf('\n');
+	// Back up to the last line break unless that would throw away more than half the text.
+	return { text: (nl > max * 0.5 ? cut.slice(0, nl) : cut).trimEnd(), truncated: true };
 }

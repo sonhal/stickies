@@ -196,37 +196,37 @@ step('weight is hidden: not in the panel, not on w, and the server refuses it', 
 
 step('a write GitLab rejects is rolled back with a toast', async (p) => {
 	await p.waitForSelector('aside.detail article');
-	const before = await p.locator('aside.detail h2').textContent();
+	const before = await p.locator('aside.detail h2:has(button)').textContent();
 	await p.click('aside.detail h2 button');
 	await p.fill('aside.detail textarea.title-input', '[reject] nope');
 	await p.keyboard.press('Enter');
 	await p.waitForSelector('.toast.error:has-text("permission")');
-	const after = await p.locator('aside.detail h2').textContent();
+	const after = await p.locator('aside.detail h2:has(button)').textContent();
 	if (after !== before) throw new Error(`title not rolled back: ${after}`);
 });
 
 step("GitLab's top-level permission error says 'no permission' (review M2)", async (p) => {
 	await p.waitForSelector('aside.detail article');
-	const before = await p.locator('aside.detail h2').textContent();
+	const before = await p.locator('aside.detail h2:has(button)').textContent();
 	const res = p.waitForResponse((r) => r.url().endsWith('/api/items/update'));
 	await p.click('aside.detail h2 button');
 	await p.fill('aside.detail textarea.title-input', '[forbid] nope');
 	await p.keyboard.press('Enter');
 	if ((await res).status() !== 403) throw new Error(`expected 403, got ${(await res).status()}`);
 	await p.waitForSelector(`.toast.error:has-text("You don't have permission")`);
-	if ((await p.locator('aside.detail h2').textContent()) !== before) throw new Error('title not rolled back');
+	if ((await p.locator('aside.detail h2:has(button)').textContent()) !== before) throw new Error('title not rolled back');
 });
 
 step('Escape in the title editor cancels without saving (review M1)', async (p) => {
 	await p.waitForSelector('aside.detail article');
-	const title = await p.locator('aside.detail h2').textContent();
+	const title = await p.locator('aside.detail h2:has(button)').textContent();
 	const before = await writes();
 	await p.click('aside.detail h2 button');
 	await p.fill('aside.detail textarea.title-input', 'ESCAPED TITLE');
 	await p.keyboard.press('Escape');
 	await p.waitForTimeout(600);
 	if ((await writes()) !== before) throw new Error('Escape sent a write to GitLab');
-	if ((await p.locator('aside.detail h2').textContent()) !== title) throw new Error('title changed after Escape');
+	if ((await p.locator('aside.detail h2:has(button)').textContent()) !== title) throw new Error('title changed after Escape');
 });
 
 step('edit the description in the side panel: full Markdown loads, Ctrl+Enter saves', async (p) => {
