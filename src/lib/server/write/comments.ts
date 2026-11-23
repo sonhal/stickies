@@ -7,11 +7,12 @@
  * anyone in the room can read) never does.
  *
  * Writing goes through the same checks as every other write: the route runs guardWrite first
- * (signed-in user, no kiosk, same origin, JSON, rate limit), then a plan function checks the request
+ * (signed-in user, or the kiosk with KIOSK_EDIT; same origin, JSON, rate limit), then a plan function checks the request
  * against the viewer's board. The body's quick actions (`/close`, `/move` …) are neutralized, since
  * GitLab would otherwise run them from a comment and step outside the board's mutation allowlist.
  * A reply's discussion, and an edited or deleted note, must belong to that item: the server reads the
- * item's comments from GitLab and checks before it changes anything. Whether the viewer may edit or
+ * item's comments from GitLab and checks before it changes anything (for the kiosk, comments without
+ * internal notes, so it can't touch one). Whether the viewer may edit or
  * delete a note is GitLab's decision (normally the author or a maintainer).
  */
 import { json } from '@sveltejs/kit';
@@ -300,7 +301,7 @@ export async function executeDeleteComment(session: Session, body: unknown) {
 	});
 }
 
-/** GET: the item's comments. Signed-in users and the kiosk (read-only, no internal notes). */
+/** GET: the item's comments. Signed-in users and the kiosk (no internal notes). */
 export async function readComments(session: Session | null, id: string) {
 	if (!session) return json({ ok: false, error: 'Not signed in' }, { status: 401, headers });
 	if (!ITEM_ID.test(id)) return json({ ok: false, error: 'Invalid request' }, { status: 400, headers });

@@ -18,7 +18,8 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { deleteText } from '$lib/client/deleteText';
 	import { readSidebarParam, withSidebarParam } from '$lib/client/urlState';
-	import { CYCLE_PARAM, cycleParamValue } from '$lib/client/autoCycle';
+	import { cycleAfterNavigate, cycleParamValue, withCycleParam } from '$lib/client/autoCycle';
+	import { rotationTarget } from '$lib/client/kioskRotation';
 	import { STATUS_PARAM, statusParamValue } from '$lib/client/statusParam';
 	import type { Command } from '$lib/client/commands';
 	import type { NavDir } from '$lib/client/boardNav';
@@ -39,18 +40,22 @@
 
 	const ui = new UiState();
 	// svelte-ignore state_referenced_locally
-	ui.readOnly = data.viewer?.kind !== 'user';
+	ui.readOnly = !(data.viewer?.kind === 'user' || (data.viewer?.kind === 'kiosk' && data.viewer.edit));
 	setUi(ui);
 	board.notify = (text, kind) => ui.toast(text, kind);
 	board.onremove = (id) => ui.forget(id);
 
 	// svelte-ignore state_referenced_locally
 	const kioskIds = data.kiosk?.views ?? null;
+	/** Views the kiosk lists in its sidebar, palette and G 1–9 (KIOSK_VIEWS) */
 	const kioskViews = kioskIds ? defaultViews.filter((v) => kioskIds.includes(v.id)) : null;
-	// The kiosk uses config views only: no personal views, nothing in storage.
+	// The kiosk uses config views only: no personal views, nothing in storage. It still knows every
+	// config view, so links and pages built on one (an epic page lists its issues through "team") work.
 	// svelte-ignore state_referenced_locally
-	const views = new ViewStore(kioskViews ?? defaultViews, data.viewer?.kind === 'user' ? data.viewer.id : null);
+	const views = new ViewStore(defaultViews, data.viewer?.kind === 'user' ? data.viewer.id : null);
 	setViews(views);
+	/** Views in the sidebar order, for G 1–9 and the palette */
+	const navViews = $derived(kioskViews ?? views.all);
 
 	// Prioritization tools. KIOSK_VIEWS can list tool ids and view ids, in the order to show them.
 	const tools = kioskIds ? prioritizationTools.filter((t) => kioskIds.includes(t.id)) : prioritizationTools;
@@ -63,6 +68,7 @@
 	const firstKiosk = kioskPages?.[0];
 	setTools({
 		list: tools,
+		all: prioritizationTools,
 		home: firstKiosk?.startsWith('/p/')
 			? { kind: 'tool', id: firstKiosk.slice(3) }
 			: firstKiosk
@@ -77,6 +83,7 @@
 	 * Desktop: sidebar hidden completely for more room. Remembered per browser when you toggle it
 	 * yourself. A URL with ?sidebar=hidden (e.g. a kiosk screen) hides it without saving that.
 	 */
+	ui.cycle = cycleParamValue(page.url.searchParams);
 	let navHidden = $state(false);
 	/**
 	 * The sidebar is hidden because the URL said so. The param then stays in the address bar
@@ -145,25 +152,32 @@
 	});
 
 	// ---- Kiosk rotation ------------------------------------------------------------------------
+	// Pauses while someone uses the screen; see src/lib/client/kioskRotation.ts.
 	$effect(() => {
-		const secs = data.kiosk?.rotateSeconds ?? 0;
-		if (!kioskPages || kioskPages.length < 2 || secs <= 0) return;
+		const rotateMs = (data.kiosk?.rotateSeconds ?? 0) * 1000;
+		if (!kioskPages || rotateMs <= 0) return;
+		let lastInput = Date.now();
+		let lastMove = Date.now();
+		const touched = () => (lastInput = Date.now());
+		const events = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const;
+		for (const ev of events) window.addEventListener(ev, touched, { capture: true, passive: true });
 		const t = setInterval(() => {
-			const i = kioskPages.indexOf(page.url.pathname);
-			// ?cycle and ?status ride along, so every prioritization board on the screen keeps cycling
-			// and shows the same statuses. ?f= (one board's whole filter) stays on its board.
-			// (?sidebar=hidden is put back by its own effect below.)
-			const params = new URL(location.href).searchParams;
-			const cycle = cycleParamValue(params);
-			const status = statusParamValue(params);
-			const parts = [
-				cycle === null ? null : cycle === '' ? CYCLE_PARAM : `${CYCLE_PARAM}=${cycle}`,
-				status === null ? null : `${STATUS_PARAM}=${encodeURIComponent(status).replace(/%2C/gi, ',')}`
-			].filter(Boolean);
-			const qs = parts.length ? `?${parts.join('&')}` : '';
-			goto(kioskPages[(i + 1) % kioskPages.length] + qs); // "/" (i = -1) counts as the first page
-		}, secs * 1000);
-		return () => clearInterval(t);
+			const el = document.activeElement as HTMLElement | null;
+			const typing = !!el && (['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName) || el.isContentEditable);
+			const busy = board.pending.size > 0 || !!ui.createOpen || !!ui.deleteRequest || ui.paletteOpen || typing;
+			const next = rotationTarget({ path: page.url.pathname, pages: kioskPages, now: Date.now(), lastInput, lastMove, rotateMs, busy });
+			if (!next) return;
+			lastMove = Date.now();
+			// ?status rides along, so every prioritization board on the screen shows the same statuses.
+			// ?f= (one board's whole filter) stays on its board. ?sidebar=hidden and ?cycle are put back
+			// by their own effects below.
+			const status = statusParamValue(new URL(location.href).searchParams);
+			goto(status === null ? next : `${next}?${STATUS_PARAM}=${encodeURIComponent(status).replace(/%2C/gi, ',')}`);
+		}, 1000);
+		return () => {
+			clearInterval(t);
+			for (const ev of events) window.removeEventListener(ev, touched, { capture: true });
+		};
 	});
 
 	function ago(iso: string | null, nowMs: number | null): string {
@@ -265,7 +279,7 @@
 			gPending = false;
 			clearTimeout(gTimer);
 			const n = Number(key);
-			const go = n >= 1 && n <= 9 && views.all[n - 1] ? `/v/${views.all[n - 1].id}` : key === 'e' ? '/epics' : key === 'h' ? '/' : null;
+			const go = n >= 1 && n <= 9 && navViews[n - 1] ? `/v/${navViews[n - 1].id}` : key === 'e' ? '/epics' : key === 'h' ? '/' : null;
 			if (go) {
 				e.preventDefault();
 				goto(go);
@@ -412,6 +426,7 @@
 		// From a link it isn't saved: opening a link doesn't change your own preference.
 		if (readSidebarParam(nav.to.url.searchParams)) navHidden = navHiddenByUrl = true;
 		else if (nav.type === 'enter') navHidden = storedNavHidden();
+		ui.cycle = cycleAfterNavigate(ui.cycle, nav.to.url.searchParams);
 		urlReady = true;
 	});
 
@@ -424,6 +439,16 @@
 		const keep = navHiddenByUrl && navHidden;
 		if (!urlReady) return;
 		const next = withSidebarParam(new URL(location.href), keep);
+		if (next) untrack(() => replaceState(next, page.state));
+	});
+
+	// ?cycle carries over the same way: once on, every prioritization board you open next cycles,
+	// and the param stays in the address bar so a reload keeps it. `?cycle=off` turns it off.
+	$effect(() => {
+		void page.url;
+		const cycle = ui.cycle;
+		if (!urlReady) return;
+		const next = withCycleParam(new URL(location.href), cycle);
 		if (next) untrack(() => replaceState(next, page.state));
 	});
 
@@ -474,7 +499,7 @@
 					run: () => askDelete(sel)
 				});
 		}
-		(kioskViews ?? views.all).forEach((v, i) =>
+		navViews.forEach((v, i) =>
 			out.push({ id: `view:${v.id}`, group: 'Views', label: v.name, hint: i < 9 ? `G ${i + 1}` : v.layout, keywords: v.description, run: () => goto(`/v/${v.id}`) })
 		);
 		for (const t of tools)

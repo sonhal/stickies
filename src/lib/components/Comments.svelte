@@ -12,7 +12,7 @@
 	 * replies indented, and a box to add a comment or reply. Comments GitLab lets the viewer change
 	 * (their own, or as a maintainer) can be edited and deleted. Loaded when shown, from GitLab with
 	 * the viewer's own token. Bodies are GitLab Markdown, rendered through a sanitizer
-	 * (src/lib/client/markdown.ts). The kiosk only reads, and never sees internal notes.
+	 * (src/lib/client/markdown.ts). The kiosk never sees internal notes, and only reads unless KIOSK_EDIT is on.
 	 */
 	let { item }: { item: WorkItem } = $props();
 	const board = getBoard();

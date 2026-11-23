@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { serverConfig } from '$lib/server/config';
 import { loadBoard } from '$lib/server/gitlab/load';
 import { GitLabError } from '$lib/server/gitlab/client';
 import { descriptionVersion, fetchDescription } from '$lib/server/write/description';
@@ -10,13 +11,15 @@ const headers = { 'cache-control': 'private, no-store' };
 
 /**
  * GET ?id=<work item gid> → { ok, description, version, editable } for the description editor.
- * Signed-in users only (the kiosk can't edit), and only for items on the viewer's own board,
+ * Signed-in users, and the kiosk when KIOSK_EDIT is on. Only for items on the viewer's own board,
  * like every write.
  */
 export const GET: RequestHandler = async ({ locals, url }) => {
 	const session = locals.session;
 	if (!session) return json({ ok: false, error: 'Not signed in' }, { status: 401, headers });
-	if (session.kind !== 'user') return json({ ok: false, error: 'The kiosk screen is read-only' }, { status: 403, headers });
+	if (session.kind === 'kiosk' && !serverConfig().kioskEdit) {
+		return json({ ok: false, error: 'The kiosk screen is read-only' }, { status: 403, headers });
+	}
 	const id = url.searchParams.get('id') ?? '';
 	if (!ITEM_ID.test(id)) return json({ ok: false, error: 'Invalid request' }, { status: 400, headers });
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { assertScope, KIOSK_SCOPES, OAuthError, refreshSession, SCOPES, scopeMatches } from './oauth';
+import { assertScope, KIOSK_SCOPES, kioskScopeProblem, OAuthError, refreshSession, SCOPES, scopeMatches } from './oauth';
 import type { ServerConfig } from './config';
 import type { UserSession } from './session';
 
@@ -25,6 +25,20 @@ describe('token scope check', () => {
 		expect(scopeMatches('read_api', KIOSK_SCOPES)).toBe(true);
 		expect(scopeMatches('api', KIOSK_SCOPES)).toBe(false);
 		expect(scopeMatches('read_api,write_repository', KIOSK_SCOPES)).toBe(false);
+	});
+
+	it('checks the kiosk token for the kiosk mode it runs in', () => {
+		// Read-only kiosk: exactly read_api
+		expect(kioskScopeProblem(['read_api'], false)).toBeNull();
+		expect(kioskScopeProblem(['api'], false)).toMatch(/KIOSK_EDIT/);
+		expect(kioskScopeProblem(['read_api', 'write_repository'], false)).not.toBeNull();
+		// Editing kiosk: api, never sudo or admin_mode
+		expect(kioskScopeProblem(['api'], true)).toBeNull();
+		expect(kioskScopeProblem(['api', 'read_api', 'read_user'], true)).toBeNull();
+		expect(kioskScopeProblem(['read_api'], true)).toMatch(/needs the api scope/);
+		expect(kioskScopeProblem([], true)).not.toBeNull();
+		expect(kioskScopeProblem(['api', 'sudo'], true)).toMatch(/sudo/);
+		expect(kioskScopeProblem(['api', 'admin_mode'], true)).toMatch(/admin_mode/);
 	});
 });
 

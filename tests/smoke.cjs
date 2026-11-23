@@ -114,6 +114,28 @@ step('matrix auto-cycle (?cycle) advances, restarts on a pick, pauses on Space',
 	await p.keyboard.press('Escape');
 });
 
+step('?cycle carries over to the next page (like ?sidebar=hidden) until ?cycle=off', async (p) => {
+	await open(p, '/v/list?cycle=3');
+	await p.waitForFunction(() => new URL(location.href).searchParams.get('cycle') === '3');
+	// A plain in-app link, without the param: the cycle comes along.
+	await p.click('nav[aria-label="Board navigation"] a[href="/p/priority-effort"]');
+	await p.waitForURL('**/p/priority-effort?cycle=3');
+	await p.waitForSelector('.note.selected');
+	const first = await p.locator('.note.selected').getAttribute('data-item');
+	await p.waitForTimeout(3400);
+	if ((await p.locator('.note.selected').getAttribute('data-item')) === first) throw new Error('carried cycle did not advance');
+	await p.keyboard.press('Escape');
+	// A reload keeps it; ?cycle=off turns it off for the pages after.
+	await p.reload();
+	await p.waitForSelector('html[data-ready]');
+	if (!p.url().includes('cycle=3')) throw new Error('reload dropped ?cycle');
+	await open(p, '/v/list?cycle=off');
+	await p.click('nav[aria-label="Board navigation"] a[href="/p/priority-effort"]');
+	await p.waitForURL('**/p/priority-effort');
+	await p.waitForTimeout(500);
+	if (p.url().includes('cycle')) throw new Error('?cycle=off did not stop the carry-over');
+});
+
 step('list view groups and opens the detail panel', async (p) => {
 	await open(p, '/v/my-issues');
 	await p.waitForSelector('.list .row');

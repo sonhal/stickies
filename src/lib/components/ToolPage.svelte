@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { getBoard } from '$lib/client/board.svelte';
 	import { getTools } from '$lib/client/tools-context';
+	import { findItemByParam } from '$lib/client/urlState';
 	import { getUi } from '$lib/client/ui.svelte';
 	import { FILTER_PARAM, decodeFilter, encodeFilter } from '$lib/client/share';
 	import { STATUS_PARAM, readStatusParam, withStatusSelection } from '$lib/client/statusParam';
@@ -22,7 +24,7 @@
 	const tools = getTools();
 	const ui = getUi();
 
-	const instance = $derived(tools.list.find((t) => t.id === toolId) ?? null);
+	const instance = $derived(tools.all.find((t) => t.id === toolId) ?? null);
 	const base = $derived(instance ? toView(instance) : null);
 	const rawFilter = $derived(page.url.searchParams.get(FILTER_PARAM));
 	const urlFilter = $derived(decodeFilter(rawFilter));
@@ -35,7 +37,19 @@
 	const view = $derived(base && filter ? { ...base, filter } : null);
 	const customized = $derived(rawFilter !== null || statusParam !== null);
 
-	/** Sets or removes params, keeping the others (?cycle, ?sidebar) as they are. */
+	// ?epic=<id> narrows the tool to one epic's issues (the epic page links here), e.g. to go through
+	// an epic's priorities on a team screen.
+	const board = getBoard();
+	const epicParam = $derived(page.url.searchParams.get('epic'));
+	const epic = $derived(epicParam ? findItemByParam(board.items, epicParam) : null);
+	const scope = $derived(epic ? { epics: [epic.id] } : undefined);
+	/** This page without ?epic, keeping the filter and the shell params */
+	const clearEpic = $derived.by(() => {
+		const qs = new URLSearchParams([...page.url.searchParams].filter(([k]) => k !== 'epic')).toString();
+		return page.url.pathname + (qs ? `?${qs}` : '');
+	});
+
+	/** Sets or removes params, keeping the others (?cycle, ?sidebar, ?epic) as they are. */
 	function writeParams(set: Record<string, string | null>) {
 		const url = new URL(location.href);
 		for (const [k, v] of Object.entries(set)) {
@@ -63,6 +77,9 @@
 </svelte:head>
 
 {#snippet actions()}
+	{#if epic}
+		<a class="btn ghost" href={clearEpic} title="Show the tool for every epic">{epic.title} ✕</a>
+	{/if}
 	{#if customized}
 		<button type="button" class="btn ghost" onclick={reset} title="Back to the filter from the config">Reset filter</button>
 	{/if}
@@ -82,8 +99,9 @@
 	{#if type.renderer === 'quadrants'}
 		<Workspace
 			{view}
+			{scope}
 			heading={instance.name}
-			subheading={type.name}
+			subheading={epic ? `${type.name} · ${epic.ref}` : type.name}
 			{actions}
 			matrixDetails={details}
 			showDisplay={false}
