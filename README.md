@@ -87,6 +87,9 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   filtered, sorted, grouped or edited (the server refuses weight writes); GitLab keeps the values.
   `settings.hiddenFields` in [`src/lib/views.config.ts`](src/lib/views.config.ts) lists the hidden fields:
   remove weight there to bring it back, or add others.
+- **Descriptions** render as Markdown (the same renderer and sanitizer as comments, below) on the issue page,
+  in the side panel, the prioritization panel and on epic pages. Long ones are cut at a line break with a
+  "Read the rest in GitLab" link. One-line previews in lists stay plain text.
 - **Comments:** the issue page and the side panel show an item's GitLab comments under the description
   (threads oldest first, replies indented, internal notes marked, "(edited)" on edited ones). You can add
   a comment or reply (`⌘/Ctrl Enter` sends), and **edit** or **delete** the comments GitLab lets you change
@@ -434,8 +437,13 @@ If something differs, fix it in those three files and refresh the fixtures in
   because two people can have different GitLab permissions. Kiosk screens share one entry. A write updates
   the writer's cache entry in place; others see it on their next refresh.
 - **No tokens in the browser**, sealed cookies, `cache-control: private, no-store` on data.
-- **Text only.** Descriptions are converted from Markdown to plain text on the server; every GitLab value
-  (titles, custom field text, labels) is rendered as text. Colors from GitLab are only used if they're plain hex.
+- **Text, or sanitized Markdown.** Descriptions and comments are rendered as Markdown only through
+  `renderMarkdown` (`marked`, then DOMPurify against a strict allowlist; see Comments above), the board's one
+  `{@html}`. Each item carries its description twice: as plain text (cut at 2,500 characters, for previews and
+  search) and as Markdown (HTML comments removed, cut at a line break near 6,000 characters) for the side panel,
+  the issue page, the prioritization panel and epic pages. Until the browser has rendered the Markdown (server
+  render, hydration) the plain text shows. Every other GitLab value (titles, custom field text, labels) is
+  rendered as text. Colors from GitLab are only used if they're plain hex.
 - **Strict CSP** in `svelte.config.js`: same-origin scripts (with nonces), styles and images; no frames. All
   libraries are bundled; nothing loads from a CDN.
 - **Validated views** from every source (config, localStorage, URL, import) with a valibot schema and limits

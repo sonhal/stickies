@@ -1,7 +1,8 @@
 /**
- * GitLab-style Markdown → safe HTML, for comments. Browser only (DOMPurify needs the DOM).
+ * GitLab-style Markdown → safe HTML, for comments and descriptions (through Markdown.svelte).
+ * Browser only (DOMPurify needs the DOM).
  *
- * Comment text is written by anyone who can comment in GitLab, so it is untrusted. Two layers:
+ * The text is written by anyone who can comment on or edit an item in GitLab, so it is untrusted. Two layers:
  *  1. `marked` turns Markdown into HTML (GFM: tables, task lists, strikethrough; single newlines
  *     become line breaks, as people expect in a comment box). Raw HTML in the text is allowed
  *     through to step 2, which decides what survives.
@@ -71,7 +72,7 @@ function resolveHref(href: string, base: { origin: string; project: string } | n
 	}
 }
 
-/** Sanitized HTML for a comment body. Only ever pass the result to {@html}. */
+/** Sanitized HTML for a comment body or description. Only ever pass the result to {@html}. */
 export function renderMarkdown(text: string, itemUrl: string | null): string {
 	if (typeof window === 'undefined') return escapeHtml(text);
 	const base = linkBase(itemUrl);

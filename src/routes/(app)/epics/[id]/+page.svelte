@@ -7,6 +7,7 @@
 	import ViewPage from '$lib/components/ViewPage.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import FieldEditor from '$lib/components/FieldEditor.svelte';
+	import Markdown from '$lib/components/Markdown.svelte';
 	import { getTools } from '$lib/client/tools-context';
 	import { keepShellParams } from '$lib/client/urlState';
 
@@ -49,7 +50,10 @@
 			{/if}
 		</div>
 		{#if epic.description}
-			<p class="desc" class:expanded>{epic.description}</p>
+			<!-- Collapsed: the first few lines, faded out (line-clamp doesn't work across Markdown blocks) -->
+			<div class="desc" class:expanded class:clamped={epic.description.length > 280}>
+				<Markdown text={epic.descriptionMarkdown || epic.description} url={epic.url} fallback={epic.description} />
+			</div>
 			{#if epic.description.length > 280}<button type="button" class="btn ghost small" onclick={() => (expanded = !expanded)}>{expanded ? 'Less' : 'More'}</button>{/if}
 		{/if}
 	</section>
@@ -118,16 +122,12 @@
 	.desc {
 		margin: 10px 0 4px;
 		max-width: 80ch;
-		white-space: pre-line;
 		font-size: 14px;
 		color: var(--text-secondary);
-		display: -webkit-box;
-		-webkit-line-clamp: 3;
-		line-clamp: 3;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
 	}
-	.desc.expanded {
-		display: block;
+	.desc.clamped:not(.expanded) {
+		max-height: 4.8em;
+		overflow: hidden;
+		mask-image: linear-gradient(to bottom, #000 55%, transparent);
 	}
 </style>

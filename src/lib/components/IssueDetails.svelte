@@ -2,6 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import { slotVar, type ColorSlot } from '$lib/colors';
 	import type { WorkItem } from '$lib/fields/types';
+	import Markdown from './Markdown.svelte';
 
 	interface Props {
 		/** null = nothing selected yet: show the "start walking" prompt */
@@ -28,8 +29,6 @@
 
 	let { issue, slot, epicTitle, quadrantName, firstQuadrant, facts, position, total, onprev, onnext, onclose, children, cycle = null }: Props =
 		$props();
-
-	const paragraphs = $derived(issue?.description ? issue.description.split(/\n{2,}/) : []);
 </script>
 
 <!-- While it cycles on its own, don't announce every change (WCAG 2.2.2): pause to get them back. -->
@@ -82,11 +81,11 @@
 		{@render children?.()}
 
 		<div class="desc">
-			{#each paragraphs as p, i (i)}
-				<p>{p}</p>
+			{#if issue.descriptionMarkdown || issue.description}
+				<Markdown text={issue.descriptionMarkdown || issue.description} url={issue.url} fallback={issue.description} />
 			{:else}
 				<p class="empty">No description.</p>
-			{/each}
+			{/if}
 		</div>
 
 		{#if issue.url}
@@ -241,10 +240,8 @@
 		color: var(--text-primary);
 		padding-right: 4px;
 	}
-	.desc p {
+	.desc > p {
 		margin: 0 0 0.8em;
-		white-space: pre-line;
-		overflow-wrap: anywhere;
 	}
 	.desc .empty {
 		color: var(--text-muted);
