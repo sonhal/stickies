@@ -12,11 +12,29 @@ import type { UserSession } from './session';
 /**
  * The board edits issues (status, custom fields, assignees, …) with the user's own token.
  * GitLab has no write scope limited to issues, so this has to be `api`. See README → Sign-in for
- * the mitigations (short sessions, sealed cookie, mutation allowlist, read-only kiosk).
+ * the mitigations (short sessions, sealed cookie, mutation allowlist, read-only kiosk by default).
  */
 export const SCOPES = 'api';
-/** The kiosk's service token must be read-only. */
+/** The kiosk's service token is read-only, unless KIOSK_EDIT is on. */
 export const KIOSK_SCOPES = 'read_api';
+/** Scopes an editing kiosk's token must never have: they reach past the group's issues. */
+const KIOSK_EDIT_FORBIDDEN = ['sudo', 'admin_mode'];
+
+/**
+ * What's wrong with the kiosk token's scopes, or null if they fit.
+ * Read-only kiosk: exactly read_api. Editing kiosk (KIOSK_EDIT): api, and no sudo or admin_mode.
+ */
+export function kioskScopeProblem(scopes: string[], edit: boolean): string | null {
+	const list = scopes.join(', ');
+	if (!edit) {
+		return scopeMatches(scopes.join(' '), KIOSK_SCOPES)
+			? null
+			: `GITLAB_TOKEN has scopes "${list}". A read-only kiosk token must have only read_api (set KIOSK_EDIT=true to let the kiosk edit with an api token).`;
+	}
+	if (!scopes.includes('api')) return `GITLAB_TOKEN has scopes "${list}". KIOSK_EDIT is on, so the token needs the api scope.`;
+	const bad = scopes.filter((s) => KIOSK_EDIT_FORBIDDEN.includes(s));
+	return bad.length ? `GITLAB_TOKEN has the ${bad.join(' and ')} scope. Make a kiosk token without it.` : null;
+}
 
 const TIMEOUT_MS = 10_000;
 
@@ -106,7 +124,8 @@ export function assertScope(scope: string | undefined | null, expected: string):
 let serviceCheck: { at: number; ok: boolean; reason: string | null } | null = null;
 
 /**
- * The kiosk is read-only by design: refuse a GITLAB_TOKEN that can write. Checked once an hour via
+ * Refuse a GITLAB_TOKEN whose scopes don't fit the kiosk mode (see kioskScopeProblem): a read-only
+ * kiosk must not hold a token that can write. Checked once an hour via
  * GET /personal_access_tokens/self (works for personal, project and group access tokens).
  * If GitLab can't tell us (old version, network), the kiosk still works and a warning is logged.
  */
@@ -120,14 +139,12 @@ export async function checkServiceToken(cfg: ServerConfig): Promise<{ ok: boolea
 		});
 		if (res.ok) {
 			const body = (await res.json()) as { scopes?: string[] };
-			if (!scopeMatches((body.scopes ?? []).join(' '), KIOSK_SCOPES)) {
-				result = {
-					ok: false,
-					reason: `GITLAB_TOKEN has scopes "${(body.scopes ?? []).join(', ')}". The kiosk token must have only read_api.`
-				};
-			}
+			const reason = kioskScopeProblem(body.scopes ?? [], cfg.kioskEdit);
+			if (reason) result = { ok: false, reason };
 		} else {
-			console.warn(`[kiosk] could not check GITLAB_TOKEN scopes (HTTP ${res.status}); make sure it is read_api only`);
+			console.warn(
+				`[kiosk] could not check GITLAB_TOKEN scopes (HTTP ${res.status}); make sure it is ${cfg.kioskEdit ? 'api (no sudo/admin_mode)' : 'read_api only'}`
+			);
 		}
 	} catch (err) {
 		console.warn('[kiosk] could not check GITLAB_TOKEN scopes:', (err as Error).message);

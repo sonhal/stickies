@@ -12,6 +12,8 @@ export interface ServerConfig {
 	/** Service token, only used for kiosk sessions */
 	serviceToken: string | null;
 	kioskKey: string | null;
+	/** KIOSK_EDIT: the kiosk can edit issues. GITLAB_TOKEN must then have the api scope (else only read_api). */
+	kioskEdit: boolean;
 	sessionKey: Buffer;
 	flowKey: Buffer;
 	/** Max time a user stays signed in before they must log in again, ms. Short: the token has `api` scope. */
@@ -105,6 +107,7 @@ export function serverConfig(): ServerConfig {
 		oauth,
 		serviceToken,
 		kioskKey,
+		kioskEdit: /^(1|true|yes)$/i.test(env.KIOSK_EDIT?.trim() ?? ''),
 		sessionKey: deriveKey(secret, 'session-cookie-v1'),
 		flowKey: deriveKey(secret, 'oauth-flow-cookie-v1'),
 		sessionMaxAgeMs: (Number.isFinite(sessionDays) && sessionDays > 0 ? sessionDays : 1) * 86_400_000,

@@ -51,6 +51,11 @@ export class UiState {
 	filterRequest = $state(0);
 	/** Kiosk / read-only screen */
 	readOnly = $state(false);
+	/**
+	 * Auto-cycle (`?cycle`) carried from page to page: the param's value, or null when off.
+	 * Kept by the shell (see cycleAfterNavigate), read by the matrix.
+	 */
+	cycle = $state<string | null>(null);
 	/** The keyboard shortcut sheet (?) is showing */
 	shortcutsOpen = $state(false);
 	/** Id of the item whose "Delete…" confirmation is showing (panel button, palette, Mod+Backspace) */

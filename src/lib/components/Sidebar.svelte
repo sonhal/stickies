@@ -26,7 +26,8 @@
 	const tools = getTools();
 
 	const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
-	const shownViews = $derived(kioskViews ? views.config : views.all);
+	// The kiosk knows every config view (for links and epic pages) but lists only KIOSK_VIEWS.
+	const shownViews = $derived(kioskViews ? views.config.filter((v) => kioskViews.includes(v.id)) : views.all);
 
 	const teams = $derived(
 		board.reg.projects
@@ -160,7 +161,11 @@
 			<!-- Plain form POST: works without JS and is covered by SvelteKit's CSRF origin check. -->
 			<form method="POST" action="/auth/logout"><button class="btn ghost small">Sign out</button></form>
 		{:else if viewer?.kind === 'kiosk'}
-			<span class="who" title="Signed in as the kiosk screen (read-only service token)">Kiosk · read-only</span>
+			{#if viewer.edit}
+				<span class="who" title="Signed in as the kiosk screen. Edits are made with the kiosk's GitLab token.">Kiosk · can edit</span>
+			{:else}
+				<span class="who" title="Signed in as the kiosk screen (read-only service token)">Kiosk · read-only</span>
+			{/if}
 		{/if}
 		<button type="button" class="btn ghost small" onclick={() => (ui.shortcutsOpen = true)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
 	</div>
