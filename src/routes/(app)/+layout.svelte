@@ -151,7 +151,8 @@
 		const t = setInterval(() => {
 			const i = kioskPages.indexOf(page.url.pathname);
 			// ?cycle and ?status ride along, so every prioritization board on the screen keeps cycling
-			// and shows the same statuses. (?sidebar=hidden is put back by its own effect below.)
+			// and shows the same statuses. ?f= (one board's whole filter) stays on its board.
+			// (?sidebar=hidden is put back by its own effect below.)
 			const params = new URL(location.href).searchParams;
 			const cycle = cycleParamValue(params);
 			const status = statusParamValue(params);

@@ -1,22 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { and, or, rule } from '$lib/query/define';
-import { compileFilter, runView } from '$lib/query/engine';
+import { runView } from '$lib/query/engine';
 import { prioritizationTools } from '$lib/prioritization.config';
 import { toView } from '$lib/prioritization/tools';
-import { STATUS, item, opt, registry } from '$lib/testing/factory';
-import {
-	readStatusParam,
-	statusParamFor,
-	statusParamValue,
-	statusSelectionOf,
-	withStatusSelection
-} from './statusParam';
+import { item, opt, registry } from '$lib/testing/factory';
+import { readStatusParam, statusParamValue, withStatusSelection } from './statusParam';
 
 const q = (s: string) => new URLSearchParams(s);
-const label = (id: string) => STATUS.options!.find((o) => o.id === id)?.label ?? null;
 const notEpics = rule('native:type', 'noneOf', ['Epic']);
 const notClosed = rule('native:status', 'noneOf', ['category:done', 'category:canceled']);
-const base = and(notEpics, notClosed);
 
 describe('readStatusParam', () => {
 	it('is null without the param', () => {
@@ -55,15 +47,8 @@ describe('readStatusParam', () => {
 	});
 });
 
-describe('filter ↔ selection', () => {
-	it('reads the top-level Status rules of an "and" filter', () => {
-		expect(statusSelectionOf(base)).toEqual({ include: [], exclude: ['category:done', 'category:canceled'] });
-		const f = and(rule('Status', 'is', 's-doing'), or(rule('native:status', 'is', 's-todo')), rule('native:status', 'empty'));
-		expect(statusSelectionOf(f)).toEqual({ include: ['s-doing'], exclude: [] }); // nested and empty aren't in it
-		expect(statusSelectionOf(or(rule('native:status', 'is', 's-todo')))).toEqual({ include: [], exclude: [] });
-	});
-
-	it('replaces the Status rules in place and keeps everything else', () => {
+describe('withStatusSelection', () => {
+	it('replaces the top-level Status rules in place and keeps everything else', () => {
 		const f = and(notEpics, notClosed, rule('Priority', 'is', 'High'));
 		const next = withStatusSelection(f, { include: ['category:done'], exclude: [] });
 		expect(next).toEqual(and(notEpics, rule('native:status', 'anyOf', ['category:done']), rule('Priority', 'is', 'High')));
@@ -75,31 +60,20 @@ describe('filter ↔ selection', () => {
 		]);
 	});
 
-	it('writes no param for the default, readable tokens otherwise', () => {
-		expect(statusParamFor(base, base, label)).toBeNull();
-		expect(statusParamFor(and(notEpics, rule('native:status', 'noneOf', ['category:canceled', 'category:done'])), base, label)).toBeNull();
-		expect(statusParamFor(and(notEpics), base, label)).toBe('all');
-		expect(statusParamFor(and(notEpics, rule('native:status', 'anyOf', ['category:done'])), base, label)).toBe('done');
-		expect(statusParamFor(and(rule('native:status', 'noneOf', ['category:toDo', 's-doing'])), base, label)).toBe('!toDo,!"In progress"');
-		// A status named like a category is quoted, so it reads back as that status
-		expect(statusParamFor(and(rule('native:status', 'is', 's-done')), base, label)).toBe('"Done"');
-		expect(statusParamFor(and(rule('native:status', 'is', 'In review')), base, label)).toBe('In review');
+	it('leaves nested and empty/set Status rules alone', () => {
+		const alt = or(rule('native:status', 'is', 's-todo'), rule('Priority', 'is', 'High'));
+		const f = and(alt, rule('native:status', 'notEmpty'), notClosed);
+		expect(withStatusSelection(f, { include: ['category:done'], exclude: [] })).toEqual(
+			and(alt, rule('native:status', 'notEmpty'), rule('native:status', 'anyOf', ['category:done']))
+		);
 	});
 
-	it('round-trips through the URL', () => {
-		for (const f of [
-			and(notEpics, rule('native:status', 'anyOf', ['category:done'])),
-			and(notEpics, rule('native:status', 'noneOf', ['category:toDo', 'category:done'])),
-			and(notEpics, rule('native:status', 'anyOf', ['s-done', 's-doing']))
-		]) {
-			const value = statusParamFor(f, base, label)!;
-			const sel = readStatusParam(q(`status=${encodeURIComponent(value)}`))!;
-			const back = withStatusSelection(base, sel);
-			const reg = registry();
-			const cx = { rank: { reg, fieldSettings: [], defaultDirection: 'firstHighest' as const }, now: new Date(), closedDaysMax: 30 };
-			const items = STATUS.options!.map((o) => item({ 'native:status': opt(o.id) }));
-			expect(items.filter(compileFilter(back, cx).test), value).toEqual(items.filter(compileFilter(f, cx).test));
-		}
+	it('adds the Status rules next to a "match any" filter, which keeps its meaning', () => {
+		const any = or(rule('Priority', 'is', 'High'), rule('native:assignees', 'anyOf', ['me']));
+		expect(withStatusSelection(any, { include: ['category:done'], exclude: [] })).toEqual(
+			and(any, rule('native:status', 'anyOf', ['category:done']))
+		);
+		expect(withStatusSelection(any, { include: [], exclude: [] })).toBe(any);
 	});
 });
 

@@ -46,21 +46,26 @@ More in [`docs/screenshots/`](docs/screenshots/) (each in light and dark).
   also waits while someone is typing in an editor or a picker, dialog or the side panel is open. A thin bar
   under the arrows shows the time to the next issue. Works with the kiosk: `/kiosk/<KIOSK_KEY>?sidebar=hidden&cycle=20`
   passes it on, and it stays through kiosk rotation.
-- **`?status=`** (optional) on a prioritization board sets which statuses it shows. It isn't a separate
-  filter: it is the Status rule of the board's filter, shown as a chip in the filter bar, and editing that rule
-  in the filter bar (remove it, or *+ Filter → Status*, with *exclude* for "none of") writes it back to the URL.
-  By default a board hides done and canceled issues through its config filter (`Status is none of done, canceled`).
+- **Prioritization board filters live in the URL.** A board shows what its filter matches, done and canceled
+  included: by default its config filter hides them (`Status is none of done, canceled`, a normal chip in the
+  filter bar). Every filter-bar edit (any field, *Match all/any*, "or…" alternatives, *exclude*) goes into
+  **`?f=`**, the whole filter compressed like a view's `?v=`, so reload, back/forward and a copied link show
+  exactly the same board. **Reset filter** goes back to the config filter. A link whose `?f=` can't be read
+  (cut off, edited by hand) shows the config filter and says so; it is validated like `?v=` (at most 40 rules,
+  4 levels deep).
+- **`?status=`** (optional) is a hand-written shorthand for a board's Status rules, for links and wall
+  screens. It replaces the top-level Status rules of the filter (the config's, or the one in `?f=`) and shows
+  as ordinary chips; the first edit in the filter bar folds it into `?f=`.
   - `/p/priority-effort?status=done`: only done issues. `?status=toDo`: only to do. `?status=toDo,inProgress`: either.
   - `?status=!toDo,!done`: everything **except** to do and done (canceled included). `!` and plain values combine.
-  - `?status=all`: every status. No param: the board's own filter. **Reset filter** goes back to it.
+  - `?status=all`: every status.
   - Values are status categories (`triage`, `toDo`, `inProgress`, `done`, `canceled`; case, spaces and dashes don't
     matter, `cancelled` works) or status names as GitLab shows them (`?status=In review`). Quote a name to keep it from
     being read as a category: `"Done"` is the status called Done, `done` is any done status.
   - Closed issues only go back `CLOSED_DAYS_MAX` days (30 by default), so "only done" means done in that window.
     Closed items without a status (older GitLab) count as done, as everywhere else on the board.
-  - Only top-level Status rules are in the URL; a Status rule inside an "or" alternative, or with *Match any*,
-    stays in the filter bar for that page. Other filter changes are not in the URL. Works with the kiosk:
-    `/kiosk/<KIOSK_KEY>?status=!done,!canceled` passes it on, and it stays through kiosk rotation.
+  - Works with the kiosk: `/kiosk/<KIOSK_KEY>?status=!done,!canceled` (and `?f=`) are passed on. `?status=` stays
+    through kiosk rotation, so every board on the screen uses it; `?f=` belongs to one board and doesn't.
 - **Layouts:** List, and Board (columns from any single-select field, status, people, parent or epic;
   optional swimlanes; drag to update).
 - **Prioritization:** named tools in their own sidebar section, each an instance of a *tool type*:
@@ -226,7 +231,8 @@ Set `GITLAB_TOKEN` (a group access token with **`read_api` only**, Reporter role
 `KIOSK_KEY` (24+ random characters). Open `https://<your board>/kiosk/<KIOSK_KEY>` once on the screen. It
 stores a 30-day kiosk cookie and redirects to the board. Add `?sidebar=hidden` to that link for a
 full-width screen, `&cycle` (or `&cycle=<seconds>`) to have prioritization boards walk through their
-issues on their own (see `?cycle` above), and `&status=…` to choose the statuses they show (see `?status=` above).
+issues on their own (see `?cycle` above), and `&status=…` to choose the statuses they show (see `?status=` above; a board's full filter, `&f=…`,
+is passed on too: copy it from the board's address bar).
 
 - The kiosk is **always read-only**: write endpoints refuse kiosk sessions, and the board checks (via
   `GET /personal_access_tokens/self`) that `GITLAB_TOKEN` has exactly `read_api`; it refuses to load with
@@ -299,7 +305,7 @@ The fields on the instances' value and effort axes are also what the create dial
 {
   id: 'priority-effort', name: 'Priority × effort', type: 'valueEffort',
   // The filter alone decides what shows, done and canceled included: leave out the Status rule to show every
-  // status. Users change the Status rule in the filter bar or with ?status= (see above).
+  // status. Users change it in the filter bar (kept in ?f=) or with ?status= (see above).
   filter: and(rule('native:type', 'noneOf', ['Epic']), rule('native:status', 'noneOf', ['category:done', 'category:canceled'])),
   value:  { field: { name: 'Priority' }, split: 'half', title: 'Priority' },
   effort: { field: { name: 'Effort' }, split: 'half' },

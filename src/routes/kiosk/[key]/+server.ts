@@ -5,12 +5,13 @@ import { safeEqual } from '$lib/server/session';
 import { SIDEBAR_PARAM, readSidebarParam } from '$lib/client/urlState';
 import { CYCLE_PARAM, cycleParamValue } from '$lib/client/autoCycle';
 import { STATUS_PARAM, statusParamValue } from '$lib/client/statusParam';
+import { FILTER_PARAM } from '$lib/client/share';
 import type { RequestHandler } from './$types';
 
 /**
  * Open /kiosk/<KIOSK_KEY> once on the wall screen. It stores a 30-day kiosk cookie and
  * redirects to the board, so the key doesn't stay in the address bar. `?sidebar=hidden`,
- * `?cycle[=<seconds>]` and `?status=` are passed on (only those: nothing else from the query is forwarded), for a
+ * `?cycle[=<seconds>]`, `?status=` and `?f=` (a board filter) are passed on (only those: nothing else from the query is forwarded), for a
  * full-width wall screen whose prioritization boards walk through their issues on their own.
  * The kiosk sees what GITLAB_TOKEN can see, so scope that token to the group only.
  */
@@ -26,6 +27,8 @@ export const GET: RequestHandler = ({ params, cookies, url }) => {
 	if (cycle !== null) next.set(CYCLE_PARAM, cycle);
 	const status = statusParamValue(url.searchParams);
 	if (status !== null) next.set(STATUS_PARAM, status);
+	const f = url.searchParams.get(FILTER_PARAM);
+	if (f) next.set(FILTER_PARAM, f.slice(0, 6000)); // decoded and validated by the board, like ?v=
 	const qs = next
 		.toString()
 		.replace(/=(&|$)/g, '$1') // a bare `?cycle`, not `?cycle=`

@@ -20,7 +20,8 @@
  * `filter` decides everything the board shows, done and canceled issues included: there is no
  * separate "completed" setting. Leave out the Status rule to show every status (closed items go back
  * CLOSED_DAYS_MAX days). Users change it in the filter bar or with `?status=` in the URL (see
- * src/lib/client/statusParam.ts), e.g. `/p/priority-effort?status=done` or `?status=!toDo,!done`.
+ * src/lib/client/statusParam.ts), e.g. `/p/priority-effort?status=done` or `?status=!toDo,!done`;
+ * filter-bar edits are kept in `?f=`.
  *
  * Ids share one namespace with view ids (KIOSK_VIEWS can list both), so keep them unique.
  * Every instance is checked by the unit tests.
